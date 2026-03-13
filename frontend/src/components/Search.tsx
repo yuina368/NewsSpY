@@ -7,6 +7,10 @@ interface SearchProps {
   onCompanySelect: (company: Company) => void;
 }
 
+// Cache for companies list
+let companiesCache: Company[] | null = null;
+let cacheFetchPromise: Promise<Company[]> | null = null;
+
 export const Search: React.FC<SearchProps> = ({ onCompanySelect }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Company[]>([]);
@@ -23,7 +27,20 @@ export const Search: React.FC<SearchProps> = ({ onCompanySelect }) => {
 
       try {
         setLoading(true);
-        const companies = await apiService.getCompanies();
+
+        // Load companies from cache or fetch once
+        let companies = companiesCache;
+        if (!companies) {
+          if (!cacheFetchPromise) {
+            cacheFetchPromise = apiService.getCompanies().then(data => {
+              companiesCache = data;
+              cacheFetchPromise = null;
+              return data;
+            });
+          }
+          companies = await cacheFetchPromise;
+        }
+
         const filtered = companies.filter(
           (company) =>
             company.ticker.toLowerCase().includes(query.toLowerCase()) ||

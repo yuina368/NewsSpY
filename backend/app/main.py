@@ -7,8 +7,6 @@ FastAPI based backend for news sentiment analysis and company scoring
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import sqlite3
-import json
 import os
 from datetime import datetime, date
 from typing import List, Optional
@@ -20,7 +18,7 @@ from app.routes.articles import router as articles_router
 from app.routes.scores import router as scores_router
 from app.routes.sentiments import router as sentiments_router
 from app.routes.auth import router as auth_router
-from app.database import DB_PATH, init_database
+from app.database import DB_PATH, init_database, fetch_all_companies
 from app.services.sentiment_analyzer import SentimentAnalyzer
 
 # Rate limiter
@@ -87,19 +85,7 @@ async def health_check():
 @app.get("/api/companies/")
 async def get_companies():
     """Get all companies"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM companies ORDER BY ticker")
-    companies = []
-    for row in cursor.fetchall():
-        companies.append({
-            "id": row[0],
-            "ticker": row[1],
-            "name": row[2],
-            "created_at": row[3]
-        })
-    conn.close()
-    return companies
+    return fetch_all_companies()
 
 @app.get("/api/model/status")
 async def model_status():

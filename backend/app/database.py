@@ -317,9 +317,9 @@ def get_ticker_sentiment_history(ticker: str, days: int = 30) -> List[Dict]:
     """Get sentiment history for a specific ticker"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT 
+            SELECT
                 DATE(published_at) as date,
                 AVG(sentiment_score) as avg_score,
                 COUNT(*) as article_count,
@@ -333,9 +333,9 @@ def get_ticker_sentiment_history(ticker: str, days: int = 30) -> List[Dict]:
             ORDER BY date DESC
             LIMIT ?
         """, (ticker, days, days))
-        
+
         results = cursor.fetchall()
-        
+
         return [
             {
                 "date": row[0],
@@ -345,6 +345,17 @@ def get_ticker_sentiment_history(ticker: str, days: int = 30) -> List[Dict]:
                 "negative_pct": row[4],
                 "neutral_pct": row[5]
             }
+            for row in results
+        ]
+
+def fetch_all_companies() -> List[Dict]:
+    """Get all companies from database"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, ticker, name, created_at FROM companies ORDER BY ticker")
+        results = cursor.fetchall()
+        return [
+            {"id": row[0], "ticker": row[1], "name": row[2], "created_at": row[3]}
             for row in results
         ]
 

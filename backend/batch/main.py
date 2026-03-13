@@ -225,8 +225,8 @@ class NewsSpYBatchProcessor:
             
             return 0
 
-        # 並列処理（最大1スレッド - DBロック回避）
-        with ThreadPoolExecutor(max_workers=1) as executor:
+        # 並列処理（最大3スレッド - DBロック回避しつつ効率化）
+        with ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(analyze_article, article)
                       for article in articles]
             

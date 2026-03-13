@@ -5,20 +5,21 @@ from datetime import datetime, date
 
 from app.database import DB_PATH, get_company_by_ticker, save_score
 from app.services.score_calculator import ScoreCalculator
+from app.config import logger
 
 router = APIRouter(tags=["scores"])
 
 @router.get("/scores/ranking/{date_str}")
 async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optional[str] = None):
     """Get company ranking for a specific date (falls back to latest if date not found)"""
-    print(f"[DEBUG] get_ranking called with date_str: {date_str}, limit: {limit}, sentiment_filter: {sentiment_filter}")
+    logger.debug(f"get_ranking called with date_str: {date_str}, limit: {limit}, sentiment_filter: {sentiment_filter}")
 
     try:
         target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
-    print(f"[DEBUG] target_date: {target_date}, DB_PATH: {DB_PATH}")
+    logger.debug(f"target_date: {target_date}, DB_PATH: {DB_PATH}")
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -49,8 +50,8 @@ async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optiona
     query += " ORDER BY s.rank LIMIT ?"
     params.append(limit)
 
-    print(f"[DEBUG] query: {query}")
-    print(f"[DEBUG] params: {params}")
+    logger.debug(f"query: {query}")
+    logger.debug(f"params: {params}")
 
     cursor.execute(query, params)
     results = []
@@ -69,13 +70,13 @@ async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optiona
 
     # If no results for requested date, try to get the latest available date
     if not results:
-        print(f"[DEBUG] No scores found for {target_date}, fetching latest available date")
+        logger.debug(f"No scores found for {target_date}, fetching latest available date")
 
         cursor.execute("SELECT MAX(date) FROM scores")
         latest_date = cursor.fetchone()[0]
 
         if latest_date:
-            print(f"[DEBUG] Using latest date: {latest_date}")
+            logger.debug(f"Using latest date: {latest_date}")
 
             params = [latest_date]
             query = """
@@ -116,25 +117,25 @@ async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optiona
                     "_actual_date": str(latest_date)  # Include actual date for reference
                 })
 
-    print(f"[DEBUG] results count: {len(results)}")
+    logger.debug(f"results count: {len(results)}")
     conn.close()
     return results
 
 @router.post("/scores/calculate/{date_str}")
 async def calculate_scores(date_str: str):
     """Calculate scores for all companies on a specific date"""
-    print(f"[DEBUG] calculate_scores called with date_str: {date_str}")
-    
+    logger.debug(f"calculate_scores called with date_str: {date_str}")
+
     try:
         target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    
-    print(f"[DEBUG] target_date: {target_date}")
-    
+
+    logger.debug(f"target_date: {target_date}")
+
     # Calculate scores using ScoreCalculator
     result = ScoreCalculator.calculate_for_date(target_date)
-    print(f"[DEBUG] ScoreCalculator result: {result}")
+    logger.debug(f"ScoreCalculator result: {result}")
     
     if result["companies_scored"] == 0:
         return {
@@ -147,9 +148,9 @@ async def calculate_scores(date_str: str):
     for score_item in result["scores"]:
         ticker = score_item["ticker"]
         company_id = get_company_by_ticker(ticker)
-        
+
         if company_id is None:
-            print(f"[DEBUG] Company not found for ticker: {ticker}")
+            logger.debug(f"Company not found for ticker: {ticker}")
             continue
         
         success = save_score(
@@ -163,9 +164,9 @@ async def calculate_scores(date_str: str):
         
         if success:
             scores_saved += 1
-    
-    print(f"[DEBUG] Saved {scores_saved} scores to database")
-    
+
+    logger.debug(f"Saved {scores_saved} scores to database")
+
     return {
         "companies_scored": result["companies_scored"],
         "total_articles": result["total_articles"],

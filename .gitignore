@@ -61,6 +61,9 @@ frontend/dist/
 logs/
 *.log
 
+# Temporary files
+tmp/
+
 # Docker
 *.pid
 *.seed
@@ -69,3 +72,5 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+backend/venv/
+**/__pycache__/

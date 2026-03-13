@@ -14,7 +14,6 @@ const COLORS = {
 };
 
 function App() {
-  const [, setCompanies] = useState<Company[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -32,10 +31,6 @@ function App() {
         const health = await apiService.getHealth();
         setHealthStatus(health.status === 'healthy' ? 'healthy' : 'unhealthy');
 
-        // Load companies
-        const companiesData = await apiService.getCompanies();
-        setCompanies(companiesData);
-
         // Load scores for selected date
         await loadScores(selectedDate);
       } catch (error) {
@@ -50,12 +45,10 @@ function App() {
   }, []);
 
   const loadScores = async (date: string) => {
-    console.log(`[DEBUG] loadScores called with date: ${date}, sentimentFilter: ${sentimentFilter}`);
     try {
       setLoading(true);
       const sentimentParam = sentimentFilter === 'all' ? undefined : sentimentFilter;
       const scoresData = await apiService.getScores(date, { limit: 100, sentiment_filter: sentimentParam });
-      console.log(`[DEBUG] loadScores received scoresData:`, scoresData);
       setScores(scoresData);
       
       // Load articles
@@ -73,12 +66,9 @@ function App() {
   };
 
   const handleCalculateScores = async () => {
-    console.log(`[DEBUG] handleCalculateScores called with selectedDate: ${selectedDate}`);
     try {
       setLoading(true);
       const result = await apiService.calculateScores(selectedDate);
-      console.log(`[DEBUG] calculateScores result:`, result);
-      console.log(`Calculated scores for ${result.companies_scored} companies`);
       await loadScores(selectedDate);
     } catch (error) {
       console.error('Failed to calculate scores:', error);
@@ -115,12 +105,6 @@ function App() {
   };
 
   const stats = getStats();
-
-  // Debug: Log scores state changes
-  useEffect(() => {
-    console.log(`[DEBUG] scores state changed:`, scores);
-    console.log(`[DEBUG] scores.length: ${scores.length}`);
-  }, [scores]);
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { X, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { apiService } from '../services/api';
-import type { SentimentHistory } from '../types';
+import type { SentimentHistory, TickerSentimentHistoryResponse } from '../types';
 
 interface StockDetailProps {
   ticker: string;
@@ -10,7 +10,7 @@ interface StockDetailProps {
 }
 
 export const StockDetail: React.FC<StockDetailProps> = ({ ticker, onClose }) => {
-  const [history, setHistory] = useState<SentimentHistory[]>([]);
+  const [response, setResponse] = useState<TickerSentimentHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +20,7 @@ export const StockDetail: React.FC<StockDetailProps> = ({ ticker, onClose }) => 
         setLoading(true);
         setError(null);
         const data = await apiService.getTickerSentimentHistory(ticker, 30);
-        setHistory(data.reverse());
+        setResponse(data);
       } catch (err) {
         setError('Failed to fetch sentiment history');
         console.error(err);
@@ -33,8 +33,8 @@ export const StockDetail: React.FC<StockDetailProps> = ({ ticker, onClose }) => 
   }, [ticker]);
 
   const getLatestScore = (): number => {
-    if (history.length === 0) return 0;
-    return history[history.length - 1].avg_score;
+    if (!response || response.history.length === 0) return 0;
+    return response.history[0].avg_score;
   };
 
   const getScoreIcon = () => {
@@ -85,8 +85,8 @@ export const StockDetail: React.FC<StockDetailProps> = ({ ticker, onClose }) => 
       <div className="bg-white rounded-lg p-8 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">{ticker}</h2>
-            <p className="text-gray-600 mt-1">Sentiment History (Last 30 Days)</p>
+            <h2 className="text-3xl font-bold text-gray-900">{response?.name || ticker}</h2>
+            <p className="text-gray-600 mt-1">Sentiment History (Last {response?.days || 30} Days)</p>
           </div>
           <button
             onClick={onClose}
@@ -109,7 +109,7 @@ export const StockDetail: React.FC<StockDetailProps> = ({ ticker, onClose }) => 
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-4">Sentiment Trend</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={history}>
+            <LineChart data={response?.history || []}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 dataKey="date" 
@@ -139,27 +139,27 @@ export const StockDetail: React.FC<StockDetailProps> = ({ ticker, onClose }) => 
           <div className="bg-green-50 p-4 rounded-lg">
             <p className="text-sm text-gray-600">Positive</p>
             <p className="text-2xl font-bold text-green-600">
-              {history.length > 0 ? `${history[history.length - 1].positive_pct.toFixed(1)}%` : '0%'}
+              {response && response.history.length > 0 ? `${response.history[0].positive_pct.toFixed(1)}%` : '0%'}
             </p>
           </div>
           <div className="bg-red-50 p-4 rounded-lg">
             <p className="text-sm text-gray-600">Negative</p>
             <p className="text-2xl font-bold text-red-600">
-              {history.length > 0 ? `${history[history.length - 1].negative_pct.toFixed(1)}%` : '0%'}
+              {response && response.history.length > 0 ? `${response.history[0].negative_pct.toFixed(1)}%` : '0%'}
             </p>
           </div>
           <div className="bg-gray-50 p-4 rounded-lg">
             <p className="text-sm text-gray-600">Neutral</p>
             <p className="text-2xl font-bold text-gray-600">
-              {history.length > 0 ? `${history[history.length - 1].neutral_pct.toFixed(1)}%` : '0%'}
+              {response && response.history.length > 0 ? `${response.history[0].neutral_pct.toFixed(1)}%` : '0%'}
             </p>
           </div>
         </div>
 
         <div className="mt-6">
-          <h3 className="text-lg font-semibold mb-4">Recent Articles</h3>
+          <h3 className="text-lg font-semibold mb-4">Daily Sentiment History</h3>
           <div className="space-y-2">
-            {history.slice(-5).reverse().map((item, index) => (
+            {(response?.history || []).slice(0, 5).map((item, index) => (
               <div key={index} className="bg-gray-50 p-3 rounded">
                 <div className="flex justify-between items-center">
                   <p className="text-sm font-medium">{new Date(item.date).toLocaleDateString('ja-JP')}</p>

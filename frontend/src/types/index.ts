@@ -49,6 +49,14 @@ export interface SentimentHistory {
   neutral_pct: number;
 }
 
+export interface TickerSentimentHistoryResponse {
+  ticker: string;
+  name: string;
+  days: number;
+  count: number;
+  history: SentimentHistory[];
+}
+
 export interface DailySentimentsResponse {
   date: string;
   count: number;
