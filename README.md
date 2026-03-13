@@ -1,507 +1,377 @@
-# NewsSpY - US Stock Sentiment Analysis Dashboard
+<div align="center">
 
-**[日本語](#japanese) | [English](#english) | [中文](#chinese)**
+# 📈 NewsSpY
 
----
+### US Stock Sentiment Analysis Dashboard
 
-<a name="japanese"></a>
-# 🇯🇵 日本語
+*Collect → Analyze → Visualize — fully automated, AI-powered*
 
-# NewsSpY - US Stock Sentiment Analysis Dashboard
+<br/>
 
-米国株（NYSE主要銘柄）のニュースを自動取得し、FinBERT AIモデルを用いて感情解析を行い、そのスコアを可視化するWebアプリケーションです。
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React_18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 
-## 🚀 特徴
+<br/>
 
-- **自動ニュース収集**: GNews API（無料）およびyfinanceから毎日自動的にニュースを収集
-- **複数銘柄一括取得**: 1回のAPIリクエストで複数銘柄のニュースをまとめて取得（効率化）
-- **自動記事分類**: キーワードマッチングで各記事を適切な銘柄に自動分類
-- **AI感情解析**: 金融特化型AIモデル「FinBERT」を用いて感情解析（ポジティブ/ネガティブ/ニュートラル）を実行
-- **日本時間フィルタリング**: JST 6:00-22:00のニュースのみを解析（米国市場開始前のニュースに焦点）
-- **感情ヒートマップ**: 各銘柄の感情スコアをタイル状に可視化
-- **銘柄詳細**: 特定銘柄の感情スコアの時系列推移を折れ線グラフで表示
-- **検索機能**: 44社のリストから銘柄を検索
-- **リアルタイム更新**: 最新のニュースと感情スコアをリアルタイムで反映
+**[English](#english) · [中文](#chinese)**
 
-## 🛠 技術スタック
-
-### Backend
-- **FastAPI**: 高性能なPython Webフレームワーク
-- **Python 3.10+**: メインプログラミング言語
-- **FinBERT (ProsusAI/finbert)**: 金融特化型AI感情解析モデル
-- **SQLite**: データベース（WALモードで並行処理対応）
-- **GNews API**: ニュースデータソース（無料プラン: 100リクエスト/日）
-- **yfinance**: Yahoo Financeからのニュース取得
-
-### Frontend
-- **React 18**: UIフレームワーク
-- **Vite**: 高速なビルドツール
-- **TypeScript**: 型安全なJavaScript
-- **Tailwind CSS**: ユーティリティファーストのCSSフレームワーク
-- **Recharts**: インタラクティブなデータ可視化ライブラリ
-- **Axios**: HTTPクライアント
-
-### Infrastructure
-- **Docker**: コンテナ化
-- **Docker Compose**: マルチコンテナ管理
-- **Nginx**: リバースプロキシ
-
-## 📁 プロジェクト構造
-
-```
-newspy/
-├── backend/
-│   ├── app/
-│   │   ├── main.py                 # FastAPIアプリケーションエントリーポイント
-│   │   ├── config.py               # 設定ファイル
-│   │   ├── database.py             # データベース操作
-│   │   ├── routes/
-│   │   │   ├── auth.py            # 認証API
-│   │   │   ├── sentiments.py      # 感情スコアAPI
-│   │   │   ├── scores.py          # スコアAPI
-│   │   │   └── articles.py        # 記事API
-│   │   └── services/
-│   │       ├── auth.py            # 認証サービス
-│   │       └── sentiment_analyzer.py  # FinBERT感情分析
-│   ├── batch/
-│   │   ├── main.py                 # バッチ処理メイン
-│   │   └── news_fetcher.py         # GNews/yfinance連携（複数銘柄一括取得）
-│   ├── companies.json              # 企業マスタ（44銘柄）
-│   ├── requirements.txt            # Python依存関係
-│   └── Dockerfile                  # Dockerイメージ
-├── frontend/
-│   ├── src/
-│   │   ├── main.tsx               # Reactエントリーポイント
-│   │   ├── App.tsx                # メインアプリケーション
-│   │   ├── index.css              # グローバルスタイル
-│   │   ├── components/
-│   │   │   ├── Heatmap.tsx        # 感情ヒートマップ
-│   │   │   ├── Search.tsx         # 検索機能
-│   │   │   └── StockDetail.tsx    # 銘柄詳細
-│   │   ├── services/
-│   │   │   └── api.ts             # APIクライアント
-│   │   └── types/
-│   │       └── index.ts           # TypeScript型定義
-│   ├── package.json               # Node.js依存関係
-│   ├── vite.config.ts             # Vite設定
-│   ├── tailwind.config.js         # Tailwind CSS設定
-│   └── Dockerfile                 # Dockerイメージ
-├── nginx/
-│   └── nginx.conf                 # Nginxリバースプロキシ設定
-├── docker-compose.yml             # Docker Compose設定
-├── .env.example                   # 環境変数テンプレート
-└── README.md                      # プロジェクトドキュメント
-```
-
-## 🚀 クイックスタート
-
-### 前提条件
-
-- Docker 20.10+
-- Docker Compose 2.0+
-- Git
-
-### 1. GNews APIキーの取得（無料）
-
-1. [GNews](https://gnews.io/) にアクセス
-2. 「Get API Key」をクリック
-3. Googleアカウントでサインアップ
-4. ダッシュボードからAPIキーをコピー
-
-| プラン | 価格 | リクエスト数 |
-|--------|------|-------------|
-| Free | 無料 | 100リクエスト/日 |
-| Basic | $15/月 | 1,000リクエスト/日 |
-
-### 2. リポジトリのクローン
-
-```bash
-git clone <repository-url>
-cd NewsSpY
-```
-
-### 3. 環境変数の設定
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-`.env`ファイルにAPIキーを設定：
-
-```bash
-# GNews API（無料）
-GNEWS_API_KEY=your-gnews-api-key-here
-
-# データベース
-DATABASE_URL=/app/data/newspy.db
-```
-
-### 4. Dockerコンテナの起動
-
-```bash
-docker-compose up -d
-```
-
-### 5. バッチ処理の実行（ニュース取得＆感情解析）
-
-```bash
-docker exec newspy-backend python -m batch.main
-```
-
-### 6. アクセス
-
-- **ダッシュボード**: http://localhost
-- **APIドキュメント**: http://localhost/api/docs
-
----
-
-## 📊 対象銘柄（44社）
-
-### テクノロジー
-- AAPL（Apple）、MSFT（Microsoft）、GOOGL（Alphabet）、AMZN（Amazon）
-- TSLA（Tesla）、META（Meta）、NVDA（NVIDIA）、NFLX（Netflix）
-- CRM（Salesforce）、ADOBE（Adobe）
-
-### 金融
-- JPM（JPMorgan Chase）、BAC（Bank of America）、WFC（Wells Fargo）
-- GS（Goldman Sachs）、MS（Morgan Stanley）、BLK（BlackRock）
-- ICE（Intercontinental Exchange）、CME（CME Group）
-- V（Visa）、MA（Mastercard）、AXP（American Express）
-
-### ヘルスケア
-- JNJ（Johnson & Johnson）、UNH（UnitedHealth）、PFE（Pfizer）
-- ABBV（AbbVie）、MRK（Merck）、TMO（Thermo Fisher）、LLY（Eli Lilly）
-
-### 消費財・一般
-- WMT（Walmart）、KO（Coca-Cola）、PEP（PepsiCo）、COST（Costco）
-- MCD（McDonald's）、NKE（Nike）、LOW（Lowe's）
-
-### エネルギー・産業
-- XOM（Exxon Mobil）、CVX（Chevron）、BA（Boeing）
-- HON（Honeywell）、GE（General Electric）
-
-### 通信・メディア
-- VZ（Verizon）、T（AT&T）、CMCSA（Comcast）、DIS（Disney）
-
----
-
-## ⏰ 時刻フィルタリングについて
-
-**JST 6:00-22:00 のニュースのみを解析対象とします**
-
-- 日本時間6時〜22時は、米国市場が開く前の時間帯
-- 市場開始前のニュースは、その日の取引に大きな影響を与える
-- 22時以降（米国市場終了後）のニュースは翌日扱い
-
----
-
-## 🔧 開発
-
-### バックエンド開発
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python -m batch.main  # バッチ処理実行
-```
-
-### フロントエンド開発
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
----
-
-## 📝 APIドキュメント
-
-### エンドポイント
-
-| エンドポイント | 説明 |
-|----------------|------|
-| `GET /api/companies/` | 全企業リスト取得 |
-| `GET /api/scores/ranking/{date}` | 指定日のランキング取得 |
-| `GET /api/scores/{ticker}` | 銘柄別スコア時系列取得 |
-| `GET /api/articles/?ticker={ticker}` | 銘柄別ニュース記事取得 |
-| `GET /api/sentiments/{ticker}` | 銘柄別感情スコア取得 |
-
-詳細は http://localhost/api/docs を参照
-
----
-
-## 🔄 定期実行の設定
-
-### Cron設定（毎日日本時間22時に実行）
-
-```bash
-crontab -e
-```
-
-```cron
-0 22 * * * cd /home/yuina/NewsSpY && docker exec newspy-backend python -m batch.main
-```
-
----
-
-## 📄 ライセンス
-
-MIT License
-
----
-
-## 🙏 参考文献
-
-- [FinBERT](https://huggingface.co/ProsusAI/finbert) - 金融感情分析モデル
-- [GNews API](https://gnews.io/) - ニュースデータソース
-- [yfinance](https://pypi.org/project/yfinance/) - Yahoo Finance API
+</div>
 
 ---
 
 <a name="english"></a>
-# 🇺🇸 English
 
-# NewsSpY - US Stock Sentiment Analysis Dashboard
+<div align="center">
 
-A web application that automatically collects news about US stocks (NYSE major companies), performs sentiment analysis using the FinBERT AI model, and visualizes the scores.
+## 🖥 Demo
 
-## 🚀 Features
+<!-- Replace with your actual screenshot or GIF -->
+![Dashboard Preview](./docs/screenshot.png)
 
-- **Automatic News Collection**: Daily collection from GNews API (free tier) and yfinance
-- **Batch Multi-Ticker Fetch**: Fetch news for multiple tickers in a single API request
-- **Auto Article Classification**: Automatically classify articles to relevant tickers using keyword matching
-- **AI Sentiment Analysis**: Financial-specific AI model "FinBERT" for sentiment analysis
-- **JST Time Filter**: Only analyze news published during JST 6:00-22:00 (pre-US market hours)
-- **Sentiment Heatmap**: Visualize sentiment scores across companies
-- **Stock Detail**: Time-series sentiment score charts for individual stocks
-- **Search**: Search across 44 companies
-- **Real-time Updates**: Reflect latest news and sentiment scores
+*Sentiment heatmap · Per-ticker time-series · Real-time ranking*
+
+</div>
+
+---
+
+## 🌟 What is NewsSpY?
+
+NewsSpY automatically fetches financial news for **44 NYSE companies**, runs each article through **FinBERT** (a BERT model fine-tuned on financial text), and presents the results as an interactive sentiment dashboard — updated daily.
+
+```
+News (GNews + yfinance)  →  FinBERT AI  →  SQLite  →  FastAPI  →  React Dashboard
+```
+
+---
+
+## ✨ Key Features
+
+<table>
+<tr>
+<td width="50%">
+
+**🤖 AI Sentiment Engine**
+- FinBERT (`ProsusAI/finbert`) — finance-specific NLP
+- 3-class output: Positive / Negative / Neutral
+- Aggregated daily score per ticker
+
+</td>
+<td width="50%">
+
+**📊 Interactive Dashboard**
+- Color-coded sentiment heatmap (44 tickers)
+- Time-series line chart per stock
+- Real-time search across all companies
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**📰 Smart News Collection**
+- Multi-ticker batch fetch in a single API call
+- Auto-classification to the correct ticker
+- GNews API + yfinance as dual sources
+
+</td>
+<td width="50%">
+
+**⏰ Pre-Market Focus**
+- JST 06:00–22:00 filter (before US market open)
+- News with highest trading impact
+- Cron-based daily automation
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🏗 Architecture
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    Docker Compose                    │
+│                                                      │
+│   Browser ──▶ Nginx :80 ──▶ React + Vite (TS)       │
+│                    │                                 │
+│                    ▼                                 │
+│             FastAPI /api/*                           │
+│                    │                                 │
+│                    ▼                                 │
+│             SQLite (WAL mode)                        │
+│                                                      │
+│   ┌─────────────────────────────────────────────┐   │
+│   │  Batch Worker  (cron: daily JST 22:00)      │   │
+│   │  GNews API ──┐                              │   │
+│   │              ├──▶ FinBERT ──▶ SQLite        │   │
+│   │  yfinance  ──┘                              │   │
+│   └─────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────┘
+```
+
+---
 
 ## 🛠 Tech Stack
 
-### Backend
-- **FastAPI**: High-performance Python web framework
-- **Python 3.10+**
-- **FinBERT (ProsusAI/finbert)**: Financial-specific AI sentiment analysis
-- **SQLite**: Database with WAL mode
-- **GNews API**: News source (Free: 100 requests/day)
-- **yfinance**: Yahoo Finance news fetching
+| Layer | Technology |
+|:------|:-----------|
+| **Backend** | FastAPI · Python 3.10+ · SQLite (WAL) |
+| **AI / NLP** | FinBERT `ProsusAI/finbert` (HuggingFace) |
+| **Data** | GNews API · yfinance |
+| **Frontend** | React 18 · Vite · TypeScript · Tailwind CSS · Recharts |
+| **Infra** | Docker · Docker Compose · Nginx |
 
-### Frontend
-- **React 18** with **Vite**
-- **TypeScript**
-- **Tailwind CSS**
-- **Recharts** for data visualization
-
-### Infrastructure
-- **Docker** & **Docker Compose**
-- **Nginx** reverse proxy
+---
 
 ## 🚀 Quick Start
 
-### 1. Get GNews API Key (Free)
-
-1. Visit [GNews](https://gnews.io/)
-2. Click "Get API Key"
-3. Sign up with Google account
-4. Copy API key from dashboard
-
-### 2. Clone & Setup
+> **Prerequisite:** Docker 20.10+, a free [GNews API key](https://gnews.io/) (100 req/day)
 
 ```bash
-git clone <repository-url>
-cd NewsSpY
+# 1. Clone
+git clone https://github.com/yuina368/NewsSpY.git && cd NewsSpY
+
+# 2. Configure
 cp .env.example .env
-# Edit .env and add GNEWS_API_KEY
+# → Set GNEWS_API_KEY in .env
+
+# 3. Launch
 docker-compose up -d
-```
 
-### 3. Run Batch Processing
-
-```bash
+# 4. Fetch news & run sentiment analysis
 docker exec newspy-backend python -m batch.main
 ```
 
-### 4. Access
+| URL | Description |
+|:----|:------------|
+| http://localhost | 📊 Dashboard |
+| http://localhost/api/docs | 📖 Swagger API Docs |
 
-- **Dashboard**: http://localhost
-- **API Docs**: http://localhost/api/docs
+---
+
+## 📡 API Endpoints
+
+```
+GET  /api/companies/                   → List all 44 companies
+GET  /api/scores/ranking/{date}        → Daily sentiment ranking
+GET  /api/scores/{ticker}              → Score time-series
+GET  /api/articles/?ticker={ticker}    → News by ticker
+GET  /api/sentiments/{ticker}          → Sentiment by ticker
+```
 
 ---
 
 ## 📊 Tracked Companies (44)
 
-### Technology
-- AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA, NFLX, CRM, ADOBE
+<details>
+<summary><b>View all tickers by sector</b></summary>
+<br/>
 
-### Financials
-- JPM, BAC, WFC, GS, MS, BLK, ICE, CME, V, MA, AXP
+| Sector | Tickers |
+|:-------|:--------|
+| 💻 Technology | `AAPL` `MSFT` `GOOGL` `AMZN` `TSLA` `META` `NVDA` `NFLX` `CRM` `ADBE` |
+| 🏦 Financials | `JPM` `BAC` `WFC` `GS` `MS` `BLK` `ICE` `CME` `V` `MA` `AXP` |
+| 🏥 Healthcare | `JNJ` `UNH` `PFE` `ABBV` `MRK` `TMO` `LLY` |
+| 🛒 Consumer | `WMT` `KO` `PEP` `COST` `MCD` `NKE` `LOW` |
+| ⚡ Energy / Industrial | `XOM` `CVX` `BA` `HON` `GE` |
+| 📡 Telecom / Media | `VZ` `T` `CMCSA` `DIS` |
 
-### Healthcare
-- JNJ, UNH, PFE, ABBV, MRK, TMO, LLY
-
-### Consumer
-- WMT, KO, PEP, COST, MCD, NKE, LOW
-
-### Energy/Industrial
-- XOM, CVX, BA, HON, GE
-
-### Telecom/Media
-- VZ, T, CMCSA, DIS
+</details>
 
 ---
 
-## ⏰ Time Filtering
+## ⏰ Time Filter Design
 
-**Only news published during JST 6:00-22:00 is analyzed**
-
-- JST 6:00-22:00 corresponds to pre-US market hours
-- News before market opening significantly impacts trading
-- News after 22:00 JST (post-US market close) is treated as next day
-
----
-
-## 📝 API Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/companies/` | List all companies |
-| `GET /api/scores/ranking/{date}` | Get ranking by date |
-| `GET /api/scores/{ticker}` | Get ticker score time-series |
-| `GET /api/articles/?ticker={ticker}` | Get news by ticker |
-| `GET /api/sentiments/{ticker}` | Get sentiment by ticker |
-
-Full docs: http://localhost/api/docs
-
----
-
-## 🔄 Cron Setup
-
-```bash
-crontab -e
+```
+JST  00:00 ──────── 06:00 ════════════════════ 22:00 ──── 24:00
+                      ↑                          ↑
+                  [Analysis window begins]   [Cutoff — next day]
+                  (pre-US market open)
 ```
 
-```cron
-0 22 * * * cd /home/yuina/NewsSpY && docker exec newspy-backend python -m batch.main
-```
+Only news in the **JST 06:00–22:00 window** is analyzed, capturing the cycle with the highest impact on that day's US market session.
 
 ---
 
 ## 📄 License
 
-MIT License
+MIT © [yuina368](https://github.com/yuina368)
 
 ---
 
-## 🙏 References
+<div align="center">
 
-- [FinBERT](https://huggingface.co/ProsusAI/finbert)
-- [GNews API](https://gnews.io/)
-- [yfinance](https://pypi.org/project/yfinance/)
+**[FinBERT](https://huggingface.co/ProsusAI/finbert)** · **[GNews API](https://gnews.io/)** · **[yfinance](https://pypi.org/project/yfinance/)**
+
+</div>
 
 ---
 
 <a name="chinese"></a>
-# 🇨🇳 中文
 
-# NewsSpY - 美股情绪分析仪表板
+<div align="center">
 
-自动收集美股（NYSE主要公司）新闻，使用 FinBERT AI 模型进行情绪分析，并可视化评分的 Web 应用程序。
+# 🇨🇳 NewsSpY
 
-## 🚀 特性
+*自动收集 → AI 分析 → 可视化展示*
 
-- **自动新闻收集**: 每日从 GNews API（免费）和 yfinance 收集
-- **批量多股票获取**: 单次 API 请求获取多个股票的新闻
-- **自动文章分类**: 使用关键词匹配自动分类文章
-- **AI 情绪分析**: 金融专用 AI 模型 "FinBERT" 进行情绪分析
-- **JST 时间过滤**: 仅分析 JST 6:00-22:00 发布的新闻（美股开盘前）
-- **情绪热力图**: 可视化各公司情绪评分
-- **股票详情**: 个别股票的情绪评分时序图
-- **搜索**: 搜索 44 家公司
-- **实时更新**: 反映最新新闻和情绪评分
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React_18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+
+</div>
+
+---
+
+## 🌟 项目简介
+
+NewsSpY 自动获取 **44 家 NYSE 上市公司**的财经新闻，通过 **FinBERT**（基于金融文本微调的 BERT 模型）分析每篇文章的情绪，并以交互式仪表板呈现结果——每日自动更新。
+
+```
+新闻 (GNews + yfinance)  →  FinBERT AI  →  SQLite  →  FastAPI  →  React 仪表板
+```
+
+---
+
+## ✨ 核心功能
+
+<table>
+<tr>
+<td width="50%">
+
+**🤖 AI 情绪引擎**
+- FinBERT — 金融领域专用 NLP
+- 三分类：积极 / 消极 / 中性
+- 每日每支股票聚合评分
+
+</td>
+<td width="50%">
+
+**📊 交互式仪表板**
+- 44 支股票色码情绪热力图
+- 每支股票时序折线图
+- 跨公司全文搜索
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**📰 智能新闻收集**
+- 单次 API 请求批量获取多支股票
+- 自动分类到对应股票
+- GNews API + yfinance 双数据源
+
+</td>
+<td width="50%">
+
+**⏰ 开盘前聚焦**
+- JST 06:00–22:00 过滤（美股开盘前）
+- 捕捉对交易影响最大的新闻
+- 基于 Cron 的每日自动化
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🛠 技术栈
+
+| 层级 | 技术 |
+|:-----|:-----|
+| **后端** | FastAPI · Python 3.10+ · SQLite (WAL) |
+| **AI / NLP** | FinBERT `ProsusAI/finbert` (HuggingFace) |
+| **数据** | GNews API · yfinance |
+| **前端** | React 18 · Vite · TypeScript · Tailwind CSS · Recharts |
+| **基础设施** | Docker · Docker Compose · Nginx |
+
+---
 
 ## 🚀 快速开始
 
-### 1. 获取 GNews API 密钥（免费）
-
-1. 访问 [GNews](https://gnews.io/)
-2. 点击 "Get API Key"
-3. 使用 Google 账号注册
-4. 从仪表板复制 API 密钥
-
-### 2. 克隆和设置
+> **前提条件：** Docker 20.10+，免费的 [GNews API 密钥](https://gnews.io/)（100 次请求/天）
 
 ```bash
-git clone <repository-url>
-cd NewsSpY
+# 1. 克隆
+git clone https://github.com/yuina368/NewsSpY.git && cd NewsSpY
+
+# 2. 配置
 cp .env.example .env
-# 编辑 .env 添加 GNEWS_API_KEY
+# → 在 .env 中设置 GNEWS_API_KEY
+
+# 3. 启动
 docker-compose up -d
-```
 
-### 3. 运行批处理
-
-```bash
+# 4. 获取新闻并运行情绪分析
 docker exec newspy-backend python -m batch.main
 ```
 
-### 4. 访问
-
-- **仪表板**: http://localhost
-- **API 文档**: http://localhost/api/docs
-
----
-
-## 📊 追踪公司（44家）
-
-### 科技
-- AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA, NFLX, CRM, ADOBE
-
-### 金融
-- JPM, BAC, WFC, GS, MS, BLK, ICE, CME, V, MA, AXP
-
-### 医疗保健
-- JNJ, UNH, PFE, ABBV, MRK, TMO, LLY
-
-### 消费品
-- WMT, KO, PEP, COST, MCD, NKE, LOW
-
-### 能源/工业
-- XOM, CVX, BA, HON, GE
-
-### 通信/媒体
-- VZ, T, CMCSA, DIS
+| URL | 说明 |
+|:----|:-----|
+| http://localhost | 📊 仪表板 |
+| http://localhost/api/docs | 📖 Swagger API 文档 |
 
 ---
 
-## ⏰ 时间过滤
+## 📡 API 端点
 
-**仅分析 JST 6:00-22:00 发布的新闻**
-
-- JST 6:00-22:00 对应美股开盘前时间
-- 开盘前的新闻对交易影响重大
-- 22:00 JST 之后（美股收盘后）的新闻视为次日
+```
+GET  /api/companies/                   → 列出所有 44 家公司
+GET  /api/scores/ranking/{date}        → 每日情绪排名
+GET  /api/scores/{ticker}              → 评分时序
+GET  /api/articles/?ticker={ticker}    → 按股票获取新闻
+GET  /api/sentiments/{ticker}          → 按股票获取情绪评分
+```
 
 ---
 
-## 📝 API 端点
+## 📊 追踪标的（44 家）
 
-| 端点 | 描述 |
-|------|------|
-| `GET /api/companies/` | 列出所有公司 |
-| `GET /api/scores/ranking/{date}` | 按日期获取排名 |
-| `GET /api/scores/{ticker}` | 获取股票评分时序 |
-| `GET /api/articles/?ticker={ticker}` | 按股票获取新闻 |
-| `GET /api/sentiments/{ticker}` | 按股票获取情绪 |
+<details>
+<summary><b>按板块查看所有股票代码</b></summary>
+<br/>
 
-完整文档: http://localhost/api/docs
+| 板块 | 股票代码 |
+|:-----|:---------|
+| 💻 科技 | `AAPL` `MSFT` `GOOGL` `AMZN` `TSLA` `META` `NVDA` `NFLX` `CRM` `ADBE` |
+| 🏦 金融 | `JPM` `BAC` `WFC` `GS` `MS` `BLK` `ICE` `CME` `V` `MA` `AXP` |
+| 🏥 医疗保健 | `JNJ` `UNH` `PFE` `ABBV` `MRK` `TMO` `LLY` |
+| 🛒 消费品 | `WMT` `KO` `PEP` `COST` `MCD` `NKE` `LOW` |
+| ⚡ 能源 / 工业 | `XOM` `CVX` `BA` `HON` `GE` |
+| 📡 通信 / 媒体 | `VZ` `T` `CMCSA` `DIS` |
+
+</details>
+
+---
+
+## ⏰ 时间过滤设计
+
+```
+JST  00:00 ──────── 06:00 ════════════════════ 22:00 ──── 24:00
+                      ↑                          ↑
+                  [分析窗口开始]              [截止 — 推至次日]
+                  （美股开盘前）
+```
+
+仅分析 **JST 06:00–22:00** 发布的新闻，精准捕捉对当日美股交易影响最大的新闻周期。
 
 ---
 
 ## 📄 许可证
 
-MIT License
+MIT © [yuina368](https://github.com/yuina368)
+
+---
+
+<div align="center">
+
+**[FinBERT](https://huggingface.co/ProsusAI/finbert)** · **[GNews API](https://gnews.io/)** · **[yfinance](https://pypi.org/project/yfinance/)**
+
+</div>
