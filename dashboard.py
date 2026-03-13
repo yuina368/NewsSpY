@@ -96,8 +96,8 @@ with st.sidebar:
     
     selected_date = st.date_input(
         "Select Date",
-        value=datetime(2026, 2, 16),
-        min_value=datetime(2026, 2, 1),
+        value=datetime.now(),
+        min_value=datetime.now() - timedelta(days=365),
         max_value=datetime.now()
     )
     

@@ -10,9 +10,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# NewsAPI
+# NewsAPI (deprecated - requires paid plan)
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "demo")
 NEWSAPI_BASE_URL = "https://newsapi.org/v2"
+
+# GNews API (free tier: 100 requests/day)
+GNEWS_API_KEY = os.getenv("GNEWS_API_KEY", "")
+GNEWS_BASE_URL = "https://gnews.io/api/v4"
 
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "newspy.db")

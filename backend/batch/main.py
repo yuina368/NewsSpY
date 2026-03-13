@@ -6,15 +6,19 @@ NewsSpY Batch Processing - Main
 
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from collections import defaultdict
+
+# JST timezone (UTC+9)
+JST = timezone(timedelta(hours=9))
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import NYSE_COMPANIES, NEWSAPI_KEY
+from app.config import NYSE_COMPANIES
 from app.database import (
     init_database, add_company, add_article, get_company_by_ticker,
     save_score, get_articles_for_date, DB_PATH
@@ -28,9 +32,9 @@ lock = threading.Lock()
 
 class NewsSpYBatchProcessor:
     """メインバッチプロセッサ"""
-    
+
     def __init__(self):
-        self.fetcher = NewsAPIFetcher(api_key=NEWSAPI_KEY)
+        self.fetcher = NewsAPIFetcher()
         self.sentiment_analyzer = SentimentAnalyzer()
         self.companies_tracked = 0
         self.articles_fetched = 0
@@ -97,19 +101,27 @@ class NewsSpYBatchProcessor:
                 print(f"      • {ticker}: {name}")
     
     def _fetch_articles(self):
-        """記事を取得（並列処理）"""
-        def fetch_company_articles(company):
-            ticker = company["ticker"]
-            name = company["name"]
-            
-            print(f"      • Fetching {ticker}...", end="", flush=True)
-            
-            # NewsAPIから記事取得
-            articles = self.fetcher.get_articles(ticker, name, days=30, page_size=100)
-            
-            # DBに追加
+        """記事を一括取得して分類（新しいアプローチ）"""
+        # 全記事を一括取得
+        all_articles = self.fetcher.fetch_all_companies()
+        self.articles_fetched = len(all_articles)
+
+        # 記事を企業ごとにグループ化
+        articles_by_ticker = defaultdict(list)
+        for article in all_articles:
+            ticker = article.get("ticker")
+            if ticker:
+                articles_by_ticker[ticker].append(article)
+
+        # 統計表示
+        ticker_counts = {ticker: len(articles) for ticker, articles in articles_by_ticker.items()}
+        print(f"\n      Articles by company:")
+        for ticker, count in sorted(ticker_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
+            print(f"        {ticker}: {count} articles")
+
+        # DBに保存
+        for ticker, articles in articles_by_ticker.items():
             company_id = get_company_by_ticker(ticker)
-            added_count = 0
             if company_id:
                 for article in articles:
                     success = add_article(
@@ -121,21 +133,7 @@ class NewsSpYBatchProcessor:
                         published_at=article["published_at"]
                     )
                     if success:
-                        added_count += 1
-            
-            print(f" ({len(articles)} articles)")
-            return len(articles), added_count
-        
-        # 並列処理（最大3スレッド - NewsAPIレート制限回避）
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = [executor.submit(fetch_company_articles, company) 
-                      for company in NYSE_COMPANIES]
-            
-            for future in as_completed(futures):
-                fetched, added = future.result()
-                with lock:
-                    self.articles_fetched += fetched
-                    self.articles_added += added
+                        self.articles_added += 1
     
     def _analyze_sentiment(self):
         """感情分析を実行（並列処理）"""
@@ -226,9 +224,9 @@ class NewsSpYBatchProcessor:
                         thread_conn.close()
             
             return 0
-        
-        # 並列処理（最大5スレッド）
-        with ThreadPoolExecutor(max_workers=5) as executor:
+
+        # 並列処理（最大1スレッド - DBロック回避）
+        with ThreadPoolExecutor(max_workers=1) as executor:
             futures = [executor.submit(analyze_article, article)
                       for article in articles]
             
@@ -245,10 +243,10 @@ class NewsSpYBatchProcessor:
         
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        
+
         # 対象日の記事を取得
         cursor.execute("""
-            SELECT 
+            SELECT
                 c.id, c.ticker, c.name,
                 a.id, a.published_at, a.sentiment_score
             FROM articles a
@@ -256,8 +254,30 @@ class NewsSpYBatchProcessor:
             WHERE DATE(a.published_at) = ?
             ORDER BY c.id
         """, (target_date,))
-        
-        articles = cursor.fetchall()
+
+        all_articles = cursor.fetchall()
+
+        # Filter articles by JST 6:00-22:00
+        articles = []
+        for article in all_articles:
+            company_id, ticker, name, article_id, published_at, sentiment_score = article
+            try:
+                # Parse published_at
+                if published_at.endswith('Z'):
+                    pub_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                else:
+                    pub_time = datetime.fromisoformat(published_at)
+
+                # Convert to JST
+                pub_time_jst = pub_time.astimezone(JST)
+                hour = pub_time_jst.hour
+
+                # Include only articles published during JST 6:00-22:00
+                if 6 <= hour < 22:
+                    articles.append(article)
+            except (ValueError, AttributeError):
+                # Include if we can't parse
+                articles.append(article)
         
         if not articles:
             print("      ! No articles for this date")

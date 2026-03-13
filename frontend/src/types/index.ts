@@ -19,15 +19,15 @@ export interface Article {
 }
 
 export interface Score {
-  id: number;
-  company_id: number;
-  date: string;
+  company: {
+    id: number;
+    ticker: string;
+    name: string;
+  };
   score: number;
   article_count: number;
   avg_sentiment: number | null;
   rank: number;
-  created_at: string;
-  company: Company;
 }
 
 export interface NewsSentiment {
@@ -47,6 +47,20 @@ export interface SentimentHistory {
   positive_pct: number;
   negative_pct: number;
   neutral_pct: number;
+}
+
+export interface DailySentimentsResponse {
+  date: string;
+  count: number;
+  sentiments: DailySentimentItem[];
+}
+
+export interface DailySentimentItem {
+  ticker: string;
+  name: string;
+  avg_score: number;
+  article_count: number;
+  date: string;
 }
 
 export interface HealthResponse {

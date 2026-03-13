@@ -10,21 +10,22 @@ router = APIRouter(tags=["scores"])
 
 @router.get("/scores/ranking/{date_str}")
 async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optional[str] = None):
-    """Get company ranking for a specific date"""
+    """Get company ranking for a specific date (falls back to latest if date not found)"""
     print(f"[DEBUG] get_ranking called with date_str: {date_str}, limit: {limit}, sentiment_filter: {sentiment_filter}")
-    
+
     try:
         target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    
+
     print(f"[DEBUG] target_date: {target_date}, DB_PATH: {DB_PATH}")
-    
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
+
+    # Try to get scores for the requested date
     query = """
-    SELECT 
+    SELECT
         c.id as company_id,
         c.ticker,
         c.name,
@@ -36,21 +37,21 @@ async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optiona
     JOIN companies c ON s.company_id = c.id
     WHERE s.date = ?
     """
-    
+
     params = [target_date]
-    
+
     if sentiment_filter:
         if sentiment_filter == "positive":
             query += " AND s.score > 0"
         elif sentiment_filter == "negative":
             query += " AND s.score < 0"
-    
+
     query += " ORDER BY s.rank LIMIT ?"
     params.append(limit)
-    
+
     print(f"[DEBUG] query: {query}")
     print(f"[DEBUG] params: {params}")
-    
+
     cursor.execute(query, params)
     results = []
     for row in cursor.fetchall():
@@ -65,7 +66,56 @@ async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optiona
             "avg_sentiment": row[5],
             "rank": row[6]
         })
-    
+
+    # If no results for requested date, try to get the latest available date
+    if not results:
+        print(f"[DEBUG] No scores found for {target_date}, fetching latest available date")
+
+        cursor.execute("SELECT MAX(date) FROM scores")
+        latest_date = cursor.fetchone()[0]
+
+        if latest_date:
+            print(f"[DEBUG] Using latest date: {latest_date}")
+
+            params = [latest_date]
+            query = """
+            SELECT
+                c.id as company_id,
+                c.ticker,
+                c.name,
+                s.score,
+                s.article_count,
+                s.avg_sentiment,
+                s.rank
+            FROM scores s
+            JOIN companies c ON s.company_id = c.id
+            WHERE s.date = ?
+            """
+
+            if sentiment_filter:
+                if sentiment_filter == "positive":
+                    query += " AND s.score > 0"
+                elif sentiment_filter == "negative":
+                    query += " AND s.score < 0"
+
+            query += " ORDER BY s.rank LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            for row in cursor.fetchall():
+                results.append({
+                    "company": {
+                        "id": row[0],
+                        "ticker": row[1],
+                        "name": row[2]
+                    },
+                    "score": row[3],
+                    "article_count": row[4],
+                    "avg_sentiment": row[5],
+                    "rank": row[6],
+                    "_actual_date": str(latest_date)  # Include actual date for reference
+                })
+
     print(f"[DEBUG] results count: {len(results)}")
     conn.close()
     return results

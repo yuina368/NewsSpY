@@ -16,13 +16,18 @@ limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/sentiments/daily")
 @limiter.limit("10/minute")
-async def get_daily_sentiments_api(request, target_date: Optional[str] = None):
+async def get_daily_sentiments_api(
+    request,
+    target_date: Optional[str] = None,
+    sentiment_filter: Optional[str] = None
+):
     """
     Get today's sentiment scores for all companies (heatmap data)
-    
+
     Parameters:
     - target_date: Optional date string in YYYY-MM-DD format. Defaults to today.
-    
+    - sentiment_filter: Optional filter for sentiment ('positive' or 'negative')
+
     Returns:
     - List of companies with average sentiment scores and article counts
     """
@@ -54,9 +59,16 @@ async def get_daily_sentiments_api(request, target_date: Optional[str] = None):
             "article_count": sentiment["article_count"],
             "date": parsed_date.isoformat()
         })
-    
+
     conn.close()
-    
+
+    # Apply sentiment filter if provided
+    if sentiment_filter:
+        if sentiment_filter == "positive":
+            enriched_sentiments = [s for s in enriched_sentiments if s["avg_score"] > 0]
+        elif sentiment_filter == "negative":
+            enriched_sentiments = [s for s in enriched_sentiments if s["avg_score"] < 0]
+
     return {
         "date": parsed_date.isoformat(),
         "count": len(enriched_sentiments),

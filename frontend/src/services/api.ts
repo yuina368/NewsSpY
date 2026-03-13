@@ -5,6 +5,7 @@ import type {
   Score,
   NewsSentiment,
   SentimentHistory,
+  DailySentimentsResponse,
   HealthResponse,
   ModelStatusResponse,
 } from '../types';
@@ -75,8 +76,8 @@ export const apiService = {
   },
 
   // Sentiments
-  async getDailySentiments(date: string): Promise<NewsSentiment[]> {
-    const response = await api.get<NewsSentiment[]>(`/sentiments/daily?target_date=${date}`);
+  async getDailySentiments(date: string): Promise<DailySentimentsResponse> {
+    const response = await api.get<DailySentimentsResponse>(`/sentiments/daily?target_date=${date}`);
     return response.data;
   },
 

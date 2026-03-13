@@ -15,6 +15,7 @@ services:
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8501,http://localhost
       - DATABASE_URL=/app/data/newspy.db
       - NEWSAPI_KEY=${NEWSAPI_KEY:-demo}
+      - GNEWS_API_KEY=${GNEWS_API_KEY:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
@@ -33,7 +34,8 @@ services:
     environment:
       - VITE_API_URL=/api
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
   nginx:
