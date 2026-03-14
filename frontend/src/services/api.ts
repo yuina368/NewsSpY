@@ -3,12 +3,12 @@ import type {
   Company,
   Article,
   Score,
-  NewsSentiment,
-  SentimentHistory,
   TickerSentimentHistoryResponse,
   DailySentimentsResponse,
   HealthResponse,
   ModelStatusResponse,
+  BatchRunResponse,
+  BatchStatusResponse,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -73,6 +73,17 @@ export const apiService = {
 
   async getSentimentSummary(): Promise<any> {
     const response = await api.get('/sentiments/summary');
+    return response.data;
+  },
+
+  // Batch processing
+  async runBatch(): Promise<BatchRunResponse> {
+    const response = await api.post<BatchRunResponse>('/batch/run');
+    return response.data;
+  },
+
+  async getBatchStatus(taskId: string): Promise<BatchStatusResponse> {
+    const response = await api.get<BatchStatusResponse>(`/batch/status/${taskId}`);
     return response.data;
   },
 };

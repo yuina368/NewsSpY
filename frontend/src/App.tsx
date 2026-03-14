@@ -5,7 +5,7 @@ import { Heatmap } from './components/Heatmap';
 import { StockDetail } from './components/StockDetail';
 import { Search } from './components/Search';
 import { apiService } from './services/api';
-import type { Company, Score, Article } from './types';
+import type { Company, Score, Article, BatchStatusResponse } from './types';
 
 const COLORS = {
   positive: '#10b981',
@@ -21,6 +21,9 @@ function App() {
   const [sentimentFilter, setSentimentFilter] = useState<'all' | 'positive' | 'negative'>('all');
   const [loading, setLoading] = useState(false);
   const [healthStatus, setHealthStatus] = useState<'healthy' | 'unhealthy' | 'loading'>('loading');
+  const [_batchTaskId, setBatchTaskId] = useState<string | null>(null);
+  const [batchStatus, setBatchStatus] = useState<BatchStatusResponse | null>(null);
+  const [showBatchProgress, setShowBatchProgress] = useState(false);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -68,13 +71,50 @@ function App() {
   const handleCalculateScores = async () => {
     try {
       setLoading(true);
-      const result = await apiService.calculateScores(selectedDate);
+      await apiService.calculateScores(selectedDate);
       await loadScores(selectedDate);
     } catch (error) {
       console.error('Failed to calculate scores:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpdateData = async () => {
+    try {
+      setShowBatchProgress(true);
+      const result = await apiService.runBatch();
+      setBatchTaskId(result.task_id);
+      pollBatchStatus(result.task_id);
+    } catch (error) {
+      console.error('Failed to start batch processing:', error);
+      setShowBatchProgress(false);
+    }
+  };
+
+  const pollBatchStatus = async (taskId: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const status = await apiService.getBatchStatus(taskId);
+        setBatchStatus(status);
+
+        if (status.status === 'completed' || status.status === 'failed') {
+          clearInterval(interval);
+          if (status.status === 'completed') {
+            await loadScores(selectedDate);
+          }
+          setTimeout(() => {
+            setShowBatchProgress(false);
+            setBatchStatus(null);
+            setBatchTaskId(null);
+          }, 3000);
+        }
+      } catch (error) {
+        console.error('Failed to get batch status:', error);
+        clearInterval(interval);
+        setShowBatchProgress(false);
+      }
+    }, 1000);
   };
 
   const handleDateChange = (date: string) => {
@@ -128,6 +168,14 @@ function App() {
               >
                 <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                 <span>Refresh</span>
+              </button>
+              <button
+                onClick={handleUpdateData}
+                disabled={loading || showBatchProgress}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`w-5 h-5 ${showBatchProgress ? 'animate-spin' : ''}`} />
+                <span>Update Data</span>
               </button>
             </div>
           </div>
@@ -308,6 +356,51 @@ function App() {
       {/* Stock Detail Modal */}
       {selectedStock && (
         <StockDetail ticker={selectedStock} onClose={() => setSelectedStock(null)} />
+      )}
+
+      {/* Batch Progress Modal */}
+      {showBatchProgress && batchStatus && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Updating Data</h3>
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>{batchStatus.message}</span>
+                  <span>{batchStatus.progress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div
+                    className="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                    style={{ width: `${batchStatus.progress}%` }}
+                  />
+                </div>
+              </div>
+              {batchStatus.articles_fetched !== undefined && (
+                <div className="text-sm text-gray-600">
+                  <p>Articles fetched: <span className="font-semibold">{batchStatus.articles_fetched}</span></p>
+                  <p>Articles added: <span className="font-semibold">{batchStatus.articles_added || 0}</span></p>
+                  {batchStatus.articles_analyzed !== undefined && (
+                    <p>Articles analyzed: <span className="font-semibold">{batchStatus.articles_analyzed}</span></p>
+                  )}
+                  {batchStatus.scores_saved !== undefined && (
+                    <p>Scores saved: <span className="font-semibold">{batchStatus.scores_saved}</span></p>
+                  )}
+                </div>
+              )}
+              {batchStatus.status === 'completed' && (
+                <div className="text-green-600 font-semibold text-center">
+                  ✓ Completed successfully!
+                </div>
+              )}
+              {batchStatus.status === 'failed' && (
+                <div className="text-red-600 font-semibold text-center">
+                  ✗ Failed: {batchStatus.message}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

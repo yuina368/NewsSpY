@@ -18,6 +18,7 @@ from app.routes.articles import router as articles_router
 from app.routes.scores import router as scores_router
 from app.routes.sentiments import router as sentiments_router
 from app.routes.auth import router as auth_router
+from app.routes.batch import router as batch_router
 from app.database import DB_PATH, init_database, fetch_all_companies
 from app.services.sentiment_analyzer import SentimentAnalyzer
 
@@ -73,6 +74,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(articles_router, prefix="/api")
 app.include_router(scores_router, prefix="/api")
 app.include_router(sentiments_router, prefix="/api")
+app.include_router(batch_router, prefix="/api")
 
 @app.get("/api/health/")
 async def health_check():

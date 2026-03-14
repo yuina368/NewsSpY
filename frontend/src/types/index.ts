@@ -81,3 +81,23 @@ export interface ModelStatusResponse {
   model: string;
   status: string;
 }
+
+export interface BatchRunResponse {
+  task_id: string;
+  status: string;
+  message: string;
+}
+
+export interface BatchStatusResponse {
+  status: 'running' | 'completed' | 'failed';
+  step: string;
+  progress: number;
+  message: string;
+  started_at?: string;
+  completed_at?: string;
+  articles_fetched?: number;
+  articles_added?: number;
+  articles_analyzed?: number;
+  companies_registered?: number;
+  scores_saved?: number;
+}

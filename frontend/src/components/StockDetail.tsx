@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { X, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { apiService } from '../services/api';
-import type { SentimentHistory, TickerSentimentHistoryResponse } from '../types';
+import type { TickerSentimentHistoryResponse } from '../types';
 
 interface StockDetailProps {
   ticker: string;
