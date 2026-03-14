@@ -127,6 +127,54 @@ News (GNews + yfinance)  →  FinBERT AI  →  SQLite  →  FastAPI  →  React 
 
 ---
 
+## 📁 Project Structure
+
+```
+NewsSpY/
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI application entry point
+│   │   ├── config.py            # Configuration settings
+│   │   ├── database.py          # Database operations
+│   │   ├── schemas.py           # Pydantic schemas
+│   │   ├── routes/              # API route handlers
+│   │   │   ├── articles.py      # Article endpoints
+│   │   │   ├── scores.py        # Score endpoints
+│   │   │   ├── sentiments.py    # Sentiment endpoints
+│   │   │   ├── batch.py         # Batch processing endpoints
+│   │   │   └── auth.py          # Authentication endpoints
+│   │   └── services/            # Business logic
+│   │       ├── sentiment_analyzer.py  # FinBERT integration
+│   │       └── score_calculator.py   # Score calculation
+│   ├── batch/                   # Batch processing scripts
+│   │   ├── main.py              # Main batch processor
+│   │   └── news_fetcher.py      # News fetching logic
+│   ├── companies.json           # Company data
+│   ├── Dockerfile               # Backend Docker config
+│   └── requirements.txt         # Python dependencies
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx              # Main application component
+│   │   ├── main.tsx             # Entry point
+│   │   ├── components/          # React components
+│   │   │   ├── Heatmap.tsx      # Sentiment heatmap
+│   │   │   ├── StockDetail.tsx  # Stock detail modal
+│   │   │   └── Search.tsx       # Company search
+│   │   ├── services/
+│   │   │   └── api.ts           # API client
+│   │   └── types/
+│   │       └── index.ts         # TypeScript types
+│   ├── Dockerfile               # Frontend Docker config
+│   ├── package.json             # Node dependencies
+│   └── vite.config.ts           # Vite configuration
+├── nginx/
+│   └── nginx.conf               # Nginx reverse proxy config
+├── docker-compose.yml           # Docker Compose orchestration
+└── README.md                    # This file
+```
+
+---
+
 ## 🚀 Quick Start
 
 > **Prerequisite:** Docker 20.10+, a free [GNews API key](https://gnews.io/) (100 req/day)
