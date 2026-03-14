@@ -152,7 +152,8 @@ def run_batch_task(task_id: str):
 
         from app.database import save_score
         scores_saved = 0
-        for score_item in result["scores"]:
+        scores_list = result.get("scores", [])
+        for score_item in scores_list:
             ticker = score_item["ticker"]
             company_id = get_company_by_ticker(ticker)
             if company_id:
