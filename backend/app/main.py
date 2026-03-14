@@ -19,7 +19,7 @@ from app.routes.scores import router as scores_router
 from app.routes.sentiments import router as sentiments_router
 from app.routes.auth import router as auth_router
 from app.routes.batch import router as batch_router
-from app.database import DB_PATH, init_database, fetch_all_companies
+from app.services.json_storage import read_companies
 from app.services.sentiment_analyzer import SentimentAnalyzer
 
 # Rate limiter
@@ -32,18 +32,17 @@ sentiment_analyzer = None
 async def lifespan(app: FastAPI):
     """Lifespan event handler for model loading"""
     global sentiment_analyzer
-    
+
     # Startup
     print("🚀 Starting NewsSpY API...")
-    print("📊 Initializing database...")
-    init_database()
-    
+    print("📊 Using JSON-based storage...")
+
     print("🤖 Loading FinBERT model...")
     sentiment_analyzer = SentimentAnalyzer()
     print("✓ FinBERT model loaded successfully")
-    
+
     yield
-    
+
     # Shutdown
     print("🛑 Shutting down NewsSpY API...")
 
@@ -87,7 +86,7 @@ async def health_check():
 @app.get("/api/companies/")
 async def get_companies():
     """Get all companies"""
-    return fetch_all_companies()
+    return read_companies()
 
 @app.get("/api/model/status")
 async def model_status():

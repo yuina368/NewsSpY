@@ -1,13 +1,14 @@
 from fastapi import APIRouter, HTTPException
-import sqlite3
 from typing import Optional
 from datetime import datetime, date
 
-from app.database import DB_PATH, get_company_by_ticker, save_score
-from app.services.score_calculator import ScoreCalculator
+from app.services.json_storage import (
+    read_scores, read_companies, get_ticker_sentiment_history
+)
 from app.config import logger
 
 router = APIRouter(tags=["scores"])
+
 
 @router.get("/scores/ranking/{date_str}")
 async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optional[str] = None):
@@ -19,194 +20,86 @@ async def get_ranking(date_str: str, limit: int = 100, sentiment_filter: Optiona
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
-    logger.debug(f"target_date: {target_date}, DB_PATH: {DB_PATH}")
+    # Get all scores
+    all_scores = read_scores()
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    # Filter by date
+    scores = [s for s in all_scores if s.get("date") == str(target_date)]
 
-    # Try to get scores for the requested date
-    query = """
-    SELECT
-        c.id as company_id,
-        c.ticker,
-        c.name,
-        s.score,
-        s.article_count,
-        s.avg_sentiment,
-        s.rank
-    FROM scores s
-    JOIN companies c ON s.company_id = c.id
-    WHERE s.date = ?
-    """
+    # If no results for requested date, use latest available
+    if not scores and all_scores:
+        # Get latest date from scores
+        dates = set(s.get("date") for s in all_scores if s.get("date"))
+        if dates:
+            latest_date = max(dates)
+            logger.debug(f"No scores found for {target_date}, using latest date: {latest_date}")
+            scores = [s for s in all_scores if s.get("date") == latest_date]
 
-    params = [target_date]
-
+    # Filter by sentiment
     if sentiment_filter:
         if sentiment_filter == "positive":
-            query += " AND s.score > 0"
+            scores = [s for s in scores if s.get("score", 0) > 0]
         elif sentiment_filter == "negative":
-            query += " AND s.score < 0"
+            scores = [s for s in scores if s.get("score", 0) < 0]
 
-    query += " ORDER BY s.rank LIMIT ?"
-    params.append(limit)
+    # Sort by rank and limit
+    scores.sort(key=lambda x: x.get("rank", 999))
+    scores = scores[:limit]
 
-    logger.debug(f"query: {query}")
-    logger.debug(f"params: {params}")
+    # Get company names
+    companies = read_companies()
+    company_dict = {c["ticker"]: c["name"] for c in companies}
 
-    cursor.execute(query, params)
+    # Build response
     results = []
-    for row in cursor.fetchall():
+    for score_item in scores:
+        ticker = score_item.get("ticker")
         results.append({
             "company": {
-                "id": row[0],
-                "ticker": row[1],
-                "name": row[2]
+                "id": ticker,  # Use ticker as id for JSON storage
+                "ticker": ticker,
+                "name": company_dict.get(ticker, ticker)
             },
-            "score": row[3],
-            "article_count": row[4],
-            "avg_sentiment": row[5],
-            "rank": row[6]
+            "score": score_item.get("score"),
+            "article_count": score_item.get("article_count"),
+            "avg_sentiment": score_item.get("avg_sentiment"),
+            "rank": score_item.get("rank")
         })
 
-    # If no results for requested date, try to get the latest available date
-    if not results:
-        logger.debug(f"No scores found for {target_date}, fetching latest available date")
-
-        cursor.execute("SELECT MAX(date) FROM scores")
-        latest_date = cursor.fetchone()[0]
-
-        if latest_date:
-            logger.debug(f"Using latest date: {latest_date}")
-
-            params = [latest_date]
-            query = """
-            SELECT
-                c.id as company_id,
-                c.ticker,
-                c.name,
-                s.score,
-                s.article_count,
-                s.avg_sentiment,
-                s.rank
-            FROM scores s
-            JOIN companies c ON s.company_id = c.id
-            WHERE s.date = ?
-            """
-
-            if sentiment_filter:
-                if sentiment_filter == "positive":
-                    query += " AND s.score > 0"
-                elif sentiment_filter == "negative":
-                    query += " AND s.score < 0"
-
-            query += " ORDER BY s.rank LIMIT ?"
-            params.append(limit)
-
-            cursor.execute(query, params)
-            for row in cursor.fetchall():
-                results.append({
-                    "company": {
-                        "id": row[0],
-                        "ticker": row[1],
-                        "name": row[2]
-                    },
-                    "score": row[3],
-                    "article_count": row[4],
-                    "avg_sentiment": row[5],
-                    "rank": row[6],
-                    "_actual_date": str(latest_date)  # Include actual date for reference
-                })
-
     logger.debug(f"results count: {len(results)}")
-    conn.close()
     return results
+
 
 @router.post("/scores/calculate/{date_str}")
 async def calculate_scores(date_str: str):
-    """Calculate scores for all companies on a specific date"""
-    logger.debug(f"calculate_scores called with date_str: {date_str}")
-
-    try:
-        target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-
-    logger.debug(f"target_date: {target_date}")
-
-    # Calculate scores using ScoreCalculator
-    result = ScoreCalculator.calculate_for_date(target_date)
-    logger.debug(f"ScoreCalculator result: {result}")
-    
-    if result["companies_scored"] == 0:
-        return {
-            "companies_scored": 0,
-            "message": "No articles found for this date. Please fetch news first."
-        }
-    
-    # Save scores to database
-    scores_saved = 0
-    for score_item in result["scores"]:
-        ticker = score_item["ticker"]
-        company_id = get_company_by_ticker(ticker)
-
-        if company_id is None:
-            logger.debug(f"Company not found for ticker: {ticker}")
-            continue
-        
-        success = save_score(
-            company_id=company_id,
-            date=target_date,
-            score=score_item["score"],
-            article_count=score_item["article_count"],
-            avg_sentiment=score_item["avg_sentiment"],
-            rank=score_item["rank"]
-        )
-        
-        if success:
-            scores_saved += 1
-
-    logger.debug(f"Saved {scores_saved} scores to database")
-
+    """Calculate scores for all companies on a specific date (no-op in JSON mode)"""
+    # In JSON mode, scores are calculated during batch processing
+    # This endpoint is kept for compatibility but does nothing
     return {
-        "companies_scored": result["companies_scored"],
-        "total_articles": result["total_articles"],
-        "scores_saved": scores_saved
+        "companies_scored": 0,
+        "message": "In JSON mode, scores are calculated during batch processing. Use /api/batch/run instead."
     }
+
 
 @router.get("/scores/company/{ticker}")
 async def get_company_scores(ticker: str, days: int = 30):
     """Get score history for a specific company"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT id FROM companies WHERE ticker = ?", (ticker,))
-    company = cursor.fetchone()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    
-    company_id = company[0]
-    
-    query = """
-    SELECT 
-        s.date,
-        s.score,
-        s.article_count,
-        s.avg_sentiment
-    FROM scores s
-    WHERE s.company_id = ?
-    ORDER BY s.date DESC
-    LIMIT ?
-    """
-    
-    cursor.execute(query, (company_id, days))
+    # Get sentiment history from JSON storage
+    history_data = get_ticker_sentiment_history(ticker, days)
+
     results = []
-    for row in cursor.fetchall():
+    for item in history_data.get("history", []):
         results.append({
-            "date": row[0],
-            "score": row[1],
-            "article_count": row[2],
-            "avg_sentiment": row[3]
+            "date": item["date"],
+            "score": item["avg_score"],
+            "article_count": item["article_count"],
+            "avg_sentiment": item["avg_score"]
         })
-    
-    conn.close()
+
     return results
+
+
+@router.get("/scores/ticker/{ticker}/history")
+async def get_ticker_sentiment_history(ticker: str, days: int = 30):
+    """Get detailed sentiment history for a specific ticker"""
+    return get_ticker_sentiment_history(ticker, days)

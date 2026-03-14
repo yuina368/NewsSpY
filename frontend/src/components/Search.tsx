@@ -69,29 +69,32 @@ export const Search: React.FC<SearchProps> = ({ onCompanySelect }) => {
   return (
     <div className="relative">
       <div className="relative">
-        <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neon-cyan w-5 h-5" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search companies by ticker or name..."
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="input w-full pl-10 pr-4 py-2"
         />
       </div>
 
       {showResults && results.length > 0 && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        <div className="absolute z-10 w-full mt-1 bg-dark-card border border-neon-cyan rounded-lg shadow-neon-cyan max-h-96 overflow-y-auto scrollbar-neon">
           {loading ? (
-            <div className="p-4 text-center text-gray-600">Loading...</div>
+            <div className="p-4 text-center text-neon-cyan">
+              <div className="spinner mx-auto mb-2"></div>
+              <span className="text-sm">Loading...</span>
+            </div>
           ) : (
             results.map((company) => (
               <div
                 key={company.id}
                 onClick={() => handleSelect(company)}
-                className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0"
+                className="p-3 hover:bg-neon-cyan/10 cursor-pointer border-b border-dark-border last:border-b-0 transition-colors group"
               >
-                <div className="font-semibold">{company.ticker}</div>
-                <div className="text-sm text-gray-600">{company.name}</div>
+                <div className="font-bold text-white group-hover:text-neon-cyan transition-colors">{company.ticker}</div>
+                <div className="text-sm text-gray-500 group-hover:text-gray-400 transition-colors">{company.name}</div>
               </div>
             ))
           )}
@@ -99,7 +102,7 @@ export const Search: React.FC<SearchProps> = ({ onCompanySelect }) => {
       )}
 
       {showResults && !loading && results.length === 0 && query.length >= 2 && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-4 text-center text-gray-600">
+        <div className="absolute z-10 w-full mt-1 bg-dark-card border border-dark-border rounded-lg shadow-lg p-4 text-center text-gray-500">
           No companies found
         </div>
       )}

@@ -37,8 +37,17 @@ def get_db_connection():
     Context manager for automatic connection handling
     """
     if not hasattr(_thread_local, 'connection'):
-        _thread_local.connection = sqlite3.connect(DB_PATH, check_same_thread=False)
-    
+        _thread_local.connection = sqlite3.connect(
+            DB_PATH,
+            check_same_thread=False,
+            timeout=30.0  # 30 second timeout for locked database
+        )
+        # Set pragmas for better concurrency
+        conn = _thread_local.connection
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")  # 30 seconds
+
     conn = _thread_local.connection
     try:
         yield conn

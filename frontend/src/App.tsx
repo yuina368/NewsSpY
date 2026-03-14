@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { RefreshCw, TrendingUp, TrendingDown, Minus, Activity } from 'lucide-react';
 import { Heatmap } from './components/Heatmap';
 import { StockDetail } from './components/StockDetail';
 import { Search } from './components/Search';
@@ -8,9 +8,17 @@ import { apiService } from './services/api';
 import type { Company, Score, Article, BatchStatusResponse } from './types';
 
 const COLORS = {
-  positive: '#10b981',
-  negative: '#ef4444',
+  positive: '#00ff88',
+  negative: '#ff3366',
   neutral: '#6b7280',
+};
+
+const CHART_COLORS = {
+  positive: '#00ff88',
+  negative: '#ff3366',
+  neutral: '#8884d8',
+  grid: 'rgba(0, 255, 255, 0.1)',
+  text: '#9ca3af',
 };
 
 function App() {
@@ -29,7 +37,7 @@ function App() {
     const initializeApp = async () => {
       try {
         setLoading(true);
-        
+
         // Check health
         const health = await apiService.getHealth();
         setHealthStatus(health.status === 'healthy' ? 'healthy' : 'unhealthy');
@@ -53,7 +61,7 @@ function App() {
       const sentimentParam = sentimentFilter === 'all' ? undefined : sentimentFilter;
       const scoresData = await apiService.getScores(date, { limit: 100, sentiment_filter: sentimentParam });
       setScores(scoresData);
-      
+
       // Load articles
       const articlesData = await apiService.getArticles({ limit: 20, sentiment_filter: sentimentParam });
       setArticles(articlesData);
@@ -147,35 +155,43 @@ function App() {
   const stats = getStats();
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen animated-gradient grid-pattern">
       {/* Header */}
-      <header className="bg-white shadow-sm">
+      <header className="bg-dark-bg/80 backdrop-blur-xl border-b border-dark-border sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">NewsSpY</h1>
-              <span className="text-sm text-gray-600">US Stock Sentiment Analysis</span>
+              <div className="relative">
+                <Activity className="w-8 h-8 text-neon-cyan" />
+                <div className="absolute inset-0 animate-pulse-neon">
+                  <Activity className="w-8 h-8 text-neon-cyan opacity-50" />
+                </div>
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-glow-cyan text-white">NewsSpY</h1>
+                <span className="text-xs text-neon-cyan tracking-wider">US STOCK SENTIMENT ANALYSIS</span>
+              </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className={`flex items-center gap-2 ${healthStatus === 'healthy' ? 'text-green-600' : healthStatus === 'unhealthy' ? 'text-red-600' : 'text-gray-600'}`}>
-                <div className={`w-3 h-3 rounded-full ${healthStatus === 'healthy' ? 'bg-green-600' : healthStatus === 'unhealthy' ? 'bg-red-600' : 'bg-gray-600'}`} />
-                <span className="text-sm font-medium capitalize">{healthStatus}</span>
+              <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${healthStatus === 'healthy' ? 'border-neon-green text-neon-green shadow-neon-green' : healthStatus === 'unhealthy' ? 'border-neon-red text-neon-red shadow-neon-red' : 'border-dark-border text-gray-500'}`}>
+                <div className={`w-2 h-2 rounded-full ${healthStatus === 'healthy' ? 'bg-neon-green animate-pulse-neon' : healthStatus === 'unhealthy' ? 'bg-neon-red animate-pulse' : 'bg-gray-600'}`} />
+                <span className="text-sm font-semibold capitalize">{healthStatus}</span>
               </div>
               <button
                 onClick={handleRefresh}
                 disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 bg-neon-cyan/10 border border-neon-cyan text-neon-cyan rounded-lg hover:bg-neon-cyan hover:text-dark-bg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 hover:shadow-neon-cyan"
               >
-                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <span className="font-semibold">Refresh</span>
               </button>
               <button
                 onClick={handleUpdateData}
                 disabled={loading || showBatchProgress}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 bg-neon-green/10 border border-neon-green text-neon-green rounded-lg hover:bg-neon-green hover:text-dark-bg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 hover:shadow-neon-green"
               >
-                <RefreshCw className={`w-5 h-5 ${showBatchProgress ? 'animate-spin' : ''}`} />
-                <span>Update Data</span>
+                <RefreshCw className={`w-4 h-4 ${showBatchProgress ? 'animate-spin' : ''}`} />
+                <span className="font-semibold">Update Data</span>
               </button>
             </div>
           </div>
@@ -185,23 +201,23 @@ function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Controls */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div className="card mb-8 border-pulse">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+              <label className="block text-sm font-semibold text-neon-cyan mb-2 tracking-wider">DATE</label>
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => handleDateChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input w-full px-3 py-2"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Sentiment Filter</label>
+              <label className="block text-sm font-semibold text-neon-cyan mb-2 tracking-wider">SENTIMENT FILTER</label>
               <select
                 value={sentimentFilter}
                 onChange={(e) => handleSentimentFilterChange(e.target.value as 'all' | 'positive' | 'negative')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="input w-full px-3 py-2"
               >
                 <option value="all">All</option>
                 <option value="positive">Positive</option>
@@ -209,7 +225,7 @@ function App() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+              <label className="block text-sm font-semibold text-neon-cyan mb-2 tracking-wider">SEARCH</label>
               <Search onCompanySelect={handleCompanySelect} />
             </div>
           </div>
@@ -217,84 +233,105 @@ function App() {
             <button
               onClick={handleCalculateScores}
               disabled={loading}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              className="w-full px-4 py-3 bg-gradient-to-r from-neon-cyan/20 to-neon-magenta/20 border border-neon-cyan text-neon-cyan rounded-lg hover:from-neon-cyan hover:to-neon-magenta hover:text-dark-bg disabled:opacity-50 disabled:cursor-not-allowed font-bold tracking-wider transition-all duration-300 hover:shadow-neon-cyan"
             >
-              {loading ? 'Calculating...' : 'Calculate Scores'}
+              {loading ? 'CALCULATING...' : 'CALCULATE SCORES'}
             </button>
           </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="card bg-gradient-to-br from-neon-green/5 to-transparent border-neon-green/30">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Positive</p>
-                <p className="text-3xl font-bold text-green-600">{stats.positiveCount}</p>
+                <p className="text-xs text-neon-green tracking-wider font-semibold">POSITIVE</p>
+                <p className="text-4xl font-bold text-glow-lime text-neon-green">{stats.positiveCount}</p>
               </div>
-              <TrendingUp className="w-8 h-8 text-green-600" />
+              <div className="p-3 bg-neon-green/10 rounded-full">
+                <TrendingUp className="w-8 h-8 text-neon-green" />
+              </div>
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="card bg-gradient-to-br from-neon-red/5 to-transparent border-neon-red/30">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Negative</p>
-                <p className="text-3xl font-bold text-red-600">{stats.negativeCount}</p>
+                <p className="text-xs text-neon-red tracking-wider font-semibold">NEGATIVE</p>
+                <p className="text-4xl font-bold text-glow-red text-neon-red">{stats.negativeCount}</p>
               </div>
-              <TrendingDown className="w-8 h-8 text-red-600" />
+              <div className="p-3 bg-neon-red/10 rounded-full">
+                <TrendingDown className="w-8 h-8 text-neon-red" />
+              </div>
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="card bg-gradient-to-br from-gray-500/5 to-transparent border-gray-500/30">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Neutral</p>
-                <p className="text-3xl font-bold text-gray-600">{stats.neutralCount}</p>
+                <p className="text-xs text-gray-400 tracking-wider font-semibold">NEUTRAL</p>
+                <p className="text-4xl font-bold text-gray-400">{stats.neutralCount}</p>
               </div>
-              <Minus className="w-8 h-8 text-gray-600" />
+              <div className="p-3 bg-gray-500/10 rounded-full">
+                <Minus className="w-8 h-8 text-gray-400" />
+              </div>
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className={`card bg-gradient-to-br ${stats.avgScore > 0 ? 'from-neon-green/5 to-transparent border-neon-green/30' : stats.avgScore < 0 ? 'from-neon-red/5 to-transparent border-neon-red/30' : 'from-gray-500/5 to-transparent border-gray-500/30'}`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Avg Score</p>
-                <p className={`text-3xl font-bold ${stats.avgScore > 0 ? 'text-green-600' : stats.avgScore < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                <p className="text-xs text-gray-400 tracking-wider font-semibold">AVG SCORE</p>
+                <p className={`text-4xl font-bold ${stats.avgScore > 0 ? 'text-glow-lime text-neon-green' : stats.avgScore < 0 ? 'text-glow-red text-neon-red' : 'text-gray-400'}`}>
                   {stats.avgScore.toFixed(2)}
                 </p>
               </div>
-              <Minus className="w-8 h-8 text-gray-600" />
+              <div className={`p-3 ${stats.avgScore > 0 ? 'bg-neon-green/10' : stats.avgScore < 0 ? 'bg-neon-red/10' : 'bg-gray-500/10'} rounded-full`}>
+                <Activity className={`w-8 h-8 ${stats.avgScore > 0 ? 'text-neon-green' : stats.avgScore < 0 ? 'text-neon-red' : 'text-gray-400'}`} />
+              </div>
             </div>
           </div>
         </div>
 
         {/* Heatmap */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Sentiment Heatmap</h2>
+        <div className="card mb-8">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-1 h-8 bg-gradient-to-b from-neon-cyan to-neon-magenta rounded-full"></div>
+            <h2 className="text-xl font-bold text-glow-cyan text-white tracking-wider">SENTIMENT HEATMAP</h2>
+          </div>
           {scores.length > 0 ? (
             <Heatmap scores={scores} onStockClick={handleStockClick} />
           ) : (
-            <div className="text-center py-12 text-gray-600">
-              No scores available for this date. Click "Calculate Scores" to generate scores.
+            <div className="text-center py-12 text-gray-500">
+              <Activity className="w-16 h-16 mx-auto mb-4 text-neon-cyan/30" />
+              <p className="text-neon-cyan/70">No scores available for this date. Click "Calculate Scores" to generate scores.</p>
             </div>
           )}
         </div>
 
         {/* Charts */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Top 10 Companies</h2>
+          <div className="card">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-1 h-6 bg-neon-cyan rounded-full"></div>
+              <h2 className="text-xl font-bold text-white tracking-wider">TOP 10 COMPANIES</h2>
+            </div>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={scores.slice(0, 10)}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="company.ticker" />
-                <YAxis />
-                <Tooltip />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+                <XAxis dataKey="company.ticker" stroke={CHART_COLORS.text} />
+                <YAxis stroke={CHART_COLORS.text} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#12122a', border: '1px solid #00ffff', borderRadius: '8px' }}
+                  itemStyle={{ color: '#fff' }}
+                />
                 <Legend />
-                <Bar dataKey="score" fill="#0ea5e9" />
+                <Bar dataKey="score" fill={CHART_COLORS.positive} radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Sentiment Distribution</h2>
+          <div className="card">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-1 h-6 bg-neon-magenta rounded-full"></div>
+              <h2 className="text-xl font-bold text-white tracking-wider">SENTIMENT DISTRIBUTION</h2>
+            </div>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -308,37 +345,48 @@ function App() {
                   labelLine={false}
                   label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   outerRadius={80}
-                  fill="#8884d8"
                   dataKey="value"
                 >
-                  <Cell fill={COLORS.positive} />
-                  <Cell fill={COLORS.negative} />
-                  <Cell fill={COLORS.neutral} />
+                  <Cell fill={COLORS.positive} stroke="#0a0a1a" strokeWidth={2} />
+                  <Cell fill={COLORS.negative} stroke="#0a0a1a" strokeWidth={2} />
+                  <Cell fill={COLORS.neutral} stroke="#0a0a1a" strokeWidth={2} />
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#12122a', border: '1px solid #ff00ff', borderRadius: '8px' }}
+                  itemStyle={{ color: '#fff' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Recent Articles */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Recent Articles</h2>
+        <div className="card">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-1 h-6 bg-gradient-to-b from-neon-lime to-neon-cyan rounded-full"></div>
+            <h2 className="text-xl font-bold text-white tracking-wider">RECENT ARTICLES</h2>
+          </div>
           {articles.length > 0 ? (
             <div className="space-y-4">
               {articles.slice(0, 10).map((article) => (
-                <div key={article.id} className="border-b border-gray-200 pb-4 last:border-b-0 last:pb-0">
+                <div key={article.id} className="border-b border-dark-border pb-4 last:border-b-0 last:pb-0">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 mb-1">{article.title}</h3>
-                      <p className="text-sm text-gray-600 mb-2">
-                        {article.source} • {new Date(article.published_at).toLocaleDateString('ja-JP')}
+                      <h3 className="font-semibold text-white mb-1 hover:text-neon-cyan transition-colors cursor-pointer">{article.title}</h3>
+                      <p className="text-sm text-gray-400 mb-2">
+                        <span className="text-neon-cyan">{article.source}</span> • {new Date(article.published_at).toLocaleDateString('ja-JP')}
                       </p>
-                      <p className="text-sm text-gray-700 line-clamp-2">{article.content?.substring(0, 200)}...</p>
+                      <p className="text-sm text-gray-500 line-clamp-2">{article.content?.substring(0, 200)}...</p>
                     </div>
                     {article.sentiment_score !== null && (
-                      <div className={`ml-4 px-3 py-1 rounded ${article.sentiment_score > 0 ? 'bg-green-100 text-green-800' : article.sentiment_score < 0 ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
-                        <span className="font-bold">{article.sentiment_score.toFixed(3)}</span>
+                      <div className={`ml-4 px-3 py-1 rounded-full font-bold border ${
+                        article.sentiment_score > 0
+                          ? 'bg-neon-green/10 border-neon-green text-neon-green shadow-neon-green'
+                          : article.sentiment_score < 0
+                          ? 'bg-neon-red/10 border-neon-red text-neon-red shadow-neon-red'
+                          : 'bg-gray-500/10 border-gray-500 text-gray-500'
+                      }`}>
+                        {article.sentiment_score.toFixed(3)}
                       </div>
                     )}
                   </div>
@@ -346,8 +394,9 @@ function App() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-600">
-              No articles available.
+            <div className="text-center py-12 text-gray-500">
+              <Activity className="w-16 h-16 mx-auto mb-4 text-neon-cyan/30" />
+              <p className="text-neon-cyan/70">No articles available.</p>
             </div>
           )}
         </div>
@@ -360,42 +409,45 @@ function App() {
 
       {/* Batch Progress Modal */}
       {showBatchProgress && batchStatus && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Updating Data</h3>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="card max-w-md w-full mx-4 border-neon-cyan border-2 shadow-neon-cyan">
+            <div className="flex items-center gap-3 mb-6">
+              <RefreshCw className="w-6 h-6 text-neon-cyan animate-spin" />
+              <h3 className="text-xl font-bold text-glow-cyan text-white">UPDATING DATA</h3>
+            </div>
             <div className="space-y-4">
               <div>
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>{batchStatus.message}</span>
-                  <span>{batchStatus.progress}%</span>
+                <div className="flex justify-between text-sm text-gray-400 mb-2">
+                  <span className="text-neon-cyan">{batchStatus.message}</span>
+                  <span className="text-neon-magenta font-bold">{batchStatus.progress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
+                <div className="w-full bg-dark-bg rounded-full h-3 overflow-hidden border border-dark-border">
                   <div
-                    className="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                    className="h-full rounded-full transition-all duration-300 bg-gradient-to-r from-neon-cyan to-neon-magenta shadow-neon-cyan"
                     style={{ width: `${batchStatus.progress}%` }}
                   />
                 </div>
               </div>
               {batchStatus.articles_fetched !== undefined && (
-                <div className="text-sm text-gray-600">
-                  <p>Articles fetched: <span className="font-semibold">{batchStatus.articles_fetched}</span></p>
-                  <p>Articles added: <span className="font-semibold">{batchStatus.articles_added || 0}</span></p>
+                <div className="text-sm text-gray-400 space-y-1">
+                  <p>Articles fetched: <span className="font-semibold text-neon-cyan">{batchStatus.articles_fetched}</span></p>
+                  <p>Articles added: <span className="font-semibold text-neon-magenta">{batchStatus.articles_added || 0}</span></p>
                   {batchStatus.articles_analyzed !== undefined && (
-                    <p>Articles analyzed: <span className="font-semibold">{batchStatus.articles_analyzed}</span></p>
+                    <p>Articles analyzed: <span className="font-semibold text-neon-green">{batchStatus.articles_analyzed}</span></p>
                   )}
                   {batchStatus.scores_saved !== undefined && (
-                    <p>Scores saved: <span className="font-semibold">{batchStatus.scores_saved}</span></p>
+                    <p>Scores saved: <span className="font-semibold text-neon-lime">{batchStatus.scores_saved}</span></p>
                   )}
                 </div>
               )}
               {batchStatus.status === 'completed' && (
-                <div className="text-green-600 font-semibold text-center">
-                  ✓ Completed successfully!
+                <div className="text-neon-green font-bold text-center text-lg text-glow-lime">
+                  ✓ COMPLETED SUCCESSFULLY!
                 </div>
               )}
               {batchStatus.status === 'failed' && (
-                <div className="text-red-600 font-semibold text-center">
-                  ✗ Failed: {batchStatus.message}
+                <div className="text-neon-red font-bold text-center text-lg">
+                  ✗ FAILED: {batchStatus.message}
                 </div>
               )}
             </div>

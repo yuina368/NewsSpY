@@ -42,7 +42,7 @@
 NewsSpY automatically fetches financial news for **44 NYSE companies**, runs each article through **FinBERT** (a BERT model fine-tuned on financial text), and presents the results as an interactive sentiment dashboard — updated daily.
 
 ```
-News (GNews + yfinance)  →  FinBERT AI  →  SQLite  →  FastAPI  →  React Dashboard
+News (GNews + yfinance)  →  FinBERT AI  →  JSON Files  →  FastAPI  →  React Dashboard
 ```
 
 ---
@@ -102,12 +102,12 @@ News (GNews + yfinance)  →  FinBERT AI  →  SQLite  →  FastAPI  →  React 
 │             FastAPI /api/*                           │
 │                    │                                 │
 │                    ▼                                 │
-│             SQLite (WAL mode)                        │
+│             JSON Files /app/data/json/              │
 │                                                      │
 │   ┌─────────────────────────────────────────────┐   │
-│   │  Batch Worker  (cron: daily JST 22:00)      │   │
+│   │  Batch Worker  (manual: daily JST 6-22)      │   │
 │   │  GNews API ──┐                              │   │
-│   │              ├──▶ FinBERT ──▶ SQLite        │   │
+│   │              ├──▶ FinBERT ──▶ JSON Files     │   │
 │   │  yfinance  ──┘                              │   │
 │   └─────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────┘
@@ -119,10 +119,11 @@ News (GNews + yfinance)  →  FinBERT AI  →  SQLite  →  FastAPI  →  React 
 
 | Layer | Technology |
 |:------|:-----------|
-| **Backend** | FastAPI · Python 3.10+ · SQLite (WAL) |
+| **Backend** | FastAPI · Python 3.10+ · JSON File Storage |
 | **AI / NLP** | FinBERT `ProsusAI/finbert` (HuggingFace) |
 | **Data** | GNews API · yfinance |
 | **Frontend** | React 18 · Vite · TypeScript · Tailwind CSS · Recharts |
+| **UI** | Neon-themed Investment Dashboard |
 | **Infra** | Docker · Docker Compose · Nginx |
 
 ---
@@ -135,7 +136,6 @@ NewsSpY/
 │   ├── app/
 │   │   ├── main.py              # FastAPI application entry point
 │   │   ├── config.py            # Configuration settings
-│   │   ├── database.py          # Database operations
 │   │   ├── schemas.py           # Pydantic schemas
 │   │   ├── routes/              # API route handlers
 │   │   │   ├── articles.py      # Article endpoints
@@ -144,6 +144,7 @@ NewsSpY/
 │   │   │   ├── batch.py         # Batch processing endpoints
 │   │   │   └── auth.py          # Authentication endpoints
 │   │   └── services/            # Business logic
+│   │       ├── json_storage.py         # JSON file storage
 │   │       ├── sentiment_analyzer.py  # FinBERT integration
 │   │       └── score_calculator.py   # Score calculation
 │   ├── batch/                   # Batch processing scripts
@@ -282,7 +283,7 @@ MIT © [yuina368](https://github.com/yuina368)
 NewsSpY 自动获取 **44 家 NYSE 上市公司**的财经新闻，通过 **FinBERT**（基于金融文本微调的 BERT 模型）分析每篇文章的情绪，并以交互式仪表板呈现结果——每日自动更新。
 
 ```
-新闻 (GNews + yfinance)  →  FinBERT AI  →  SQLite  →  FastAPI  →  React 仪表板
+新闻 (GNews + yfinance)  →  FinBERT AI  →  JSON 文件  →  FastAPI  →  React 仪表板
 ```
 
 ---
@@ -334,10 +335,11 @@ NewsSpY 自动获取 **44 家 NYSE 上市公司**的财经新闻，通过 **FinB
 
 | 层级 | 技术 |
 |:-----|:-----|
-| **后端** | FastAPI · Python 3.10+ · SQLite (WAL) |
+| **后端** | FastAPI · Python 3.10+ · JSON 文件存储 |
 | **AI / NLP** | FinBERT `ProsusAI/finbert` (HuggingFace) |
 | **数据** | GNews API · yfinance |
 | **前端** | React 18 · Vite · TypeScript · Tailwind CSS · Recharts |
+| **界面** | 霓虹色投资仪表板 |
 | **基础设施** | Docker · Docker Compose · Nginx |
 
 ---

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NewsSpY Batch Processing - Main
+NewsSpY Batch Processing - JSON-based version
 手動実行: python batch_process.py
 """
 
@@ -8,8 +8,6 @@ import sys
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 from collections import defaultdict
 
 # JST timezone (UTC+9)
@@ -19,339 +17,229 @@ JST = timezone(timedelta(hours=9))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.config import NYSE_COMPANIES
-from app.database import (
-    init_database, add_company, add_article, get_company_by_ticker,
-    save_score, get_articles_for_date, DB_PATH
+from app.services.json_storage import (
+    clear_all_data, write_companies, write_articles, write_scores,
+    write_status, add_article, get_ticker_sentiment_history
 )
 from app.services.sentiment_analyzer import SentimentAnalyzer
-from app.services.score_calculator import ScoreCalculator
 from batch.news_fetcher import NewsAPIFetcher
 
-# Thread-safe counters
-lock = threading.Lock()
+# Time decay calculator
+class TimeDecayCalculator:
+    """Calculate time-decay scores for news sentiment"""
+
+    @staticmethod
+    def calculate_decay_score(sentiment_score: float, published_at: str) -> float:
+        """
+        Apply time decay to sentiment score
+        - Within 6 hours: 1.0 (full weight)
+        - 6-24 hours: 0.8
+        - 24-48 hours: 0.5
+        - 48+ hours: 0.2
+        """
+        try:
+            if published_at.endswith('Z'):
+                pub_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+            else:
+                pub_time = datetime.fromisoformat(published_at)
+
+            current_time = datetime.now(pub_time.tzinfo)
+            time_diff = current_time - pub_time
+            hours_ago = time_diff.total_seconds() / 3600
+
+            # More lenient time decay
+            if hours_ago < 6:
+                time_decay = 1.0
+            elif hours_ago < 24:
+                time_decay = 0.8
+            elif hours_ago < 48:
+                time_decay = 0.5
+            else:
+                time_decay = 0.2
+
+            return sentiment_score * time_decay
+        except:
+            return sentiment_score
+
 
 class NewsSpYBatchProcessor:
-    """メインバッチプロセッサ"""
+    """メインバッチプロセッサ - JSONベース"""
 
     def __init__(self):
         self.fetcher = NewsAPIFetcher()
         self.sentiment_analyzer = SentimentAnalyzer()
-        self.companies_tracked = 0
-        self.articles_fetched = 0
-        self.articles_added = 0
-        
+        self.time_decay_calc = TimeDecayCalculator()
+        self.companies_count = 0
+        self.articles_count = 0
+        self.analyzed_count = 0
+
     def run(self):
         """メインプロセス実行"""
         print("=" * 60)
-        print("  🚀 NewsSpY Batch Processing Start")
+        print("  🚀 NewsSpY Batch Processing Start (JSON Mode)")
         print("=" * 60)
         print(f"  Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"  JST Time: {datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')}")
         print()
-        
-        # 1. Initialize Database
-        print("[1/5] Initializing Database...")
-        init_database()
-        print("      ✓ Database initialized")
-        print()
-        
-        # 2. Register Companies
-        print("[2/5] Registering Companies...")
-        self._register_companies()
-        print(f"      ✓ {self.companies_tracked} companies registered")
-        print()
-        
-        # 3. Fetch Articles
-        print("[3/5] Fetching Articles from NewsAPI...")
-        self._fetch_articles()
-        print(f"      ✓ {self.articles_fetched} articles fetched")
-        print(f"      ✓ {self.articles_added} articles added to database")
-        print()
-        
-        # 4. Analyze Sentiment
-        print("[4/5] Analyzing Sentiment...")
-        self._analyze_sentiment()
-        print("      ✓ Sentiment analysis completed")
-        print()
-        
-        # 5. Calculate Scores
-        print("[5/5] Calculating Scores...")
-        target_date = datetime.now().date()
-        self._calculate_scores(target_date)
-        print(f"      ✓ Scores calculated for {target_date}")
-        print()
-        
-        print("=" * 60)
-        print("  ✓ Batch Processing Complete!")
-        print("=" * 60)
-        print()
-    
-    def _register_companies(self):
-        """企業を登録"""
-        for company in NYSE_COMPANIES:
-            ticker = company["ticker"]
-            name = company["name"]
-            
-            # 既に存在するかチェック
-            company_id = get_company_by_ticker(ticker)
-            if not company_id:
-                company_id = add_company(ticker, name)
-            
-            if company_id:
-                self.companies_tracked += 1
-                print(f"      • {ticker}: {name}")
-    
-    def _fetch_articles(self):
-        """記事を一括取得して分類（新しいアプローチ）"""
-        # 全記事を一括取得
-        all_articles = self.fetcher.fetch_all_companies()
-        self.articles_fetched = len(all_articles)
 
-        # 記事を企業ごとにグループ化
+        # 0. Clear all data
+        print("[0/5] Clearing old data...")
+        clear_all_data()
+        print("      ✓ Old data cleared")
+        print()
+
+        # 1. Save Companies
+        print("[1/5] Saving Companies...")
+        companies_list = [{"ticker": c["ticker"], "name": c["name"]} for c in NYSE_COMPANIES]
+        write_companies(companies_list)
+        self.companies_count = len(companies_list)
+        print(f"      ✓ {self.companies_count} companies saved")
+        print()
+
+        # 2. Fetch Articles
+        print("[2/5] Fetching Articles from GNews API...")
+        all_articles = self.fetcher.fetch_all_companies()
+        self.articles_count = len(all_articles)
+
+        # Group by ticker
         articles_by_ticker = defaultdict(list)
         for article in all_articles:
             ticker = article.get("ticker")
             if ticker:
                 articles_by_ticker[ticker].append(article)
 
-        # 統計表示
-        ticker_counts = {ticker: len(articles) for ticker, articles in articles_by_ticker.items()}
-        print(f"\n      Articles by company:")
-        for ticker, count in sorted(ticker_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
-            print(f"        {ticker}: {count} articles")
-
-        # DBに保存
-        for ticker, articles in articles_by_ticker.items():
-            company_id = get_company_by_ticker(ticker)
-            if company_id:
-                for article in articles:
-                    success = add_article(
-                        company_id=company_id,
-                        title=article["title"],
-                        content=article["content"],
-                        source=article["source"],
-                        source_url=article["source_url"],
-                        published_at=article["published_at"]
-                    )
-                    if success:
-                        self.articles_added += 1
-    
-    def _analyze_sentiment(self):
-        """感情分析を実行（並列処理）"""
-        import sqlite3
-        from app.database import save_news_sentiment
-        
-        # メインスレッドで記事を取得
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # センチメント未分析の記事を取得
-        cursor.execute("""
-            SELECT a.id, a.title, a.content, a.published_at, c.ticker
-            FROM articles a
-            JOIN companies c ON a.company_id = c.id
-            WHERE a.sentiment_score IS NULL
-            LIMIT 1000
-        """)
-        
-        articles = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        
-        analyzed_count = 0
-        
-        def analyze_article(article):
-            article_id, title, content, published_at, ticker = article
-            import time
-            
-            # リトライ設定
-            max_retries = 5
-            retry_delay = 0.05  # 50ms
-            
-            for attempt in range(max_retries):
-                thread_conn = None
-                thread_cursor = None
-                try:
-                    # 各スレッドで独自のデータベース接続を作成
-                    thread_conn = sqlite3.connect(DB_PATH)
-                    thread_cursor = thread_conn.cursor()
-                    
-                    # テキスト結合
-                    text = f"{title} {content}"
-                    
-                    # センチメント分析
-                    score, confidence = self.sentiment_analyzer.analyze(text)
-                    
-                    # ラベルの決定
-                    if score > 0:
-                        label = "positive"
-                    elif score < 0:
-                        label = "negative"
-                    else:
-                        label = "neutral"
-                    
-                    # DB更新（articlesテーブル）
-                    thread_cursor.execute("""
-                        UPDATE articles
-                        SET sentiment_score = ?, sentiment_confidence = ?
-                        WHERE id = ?
-                    """, (score, confidence, article_id))
-                    
-                    thread_conn.commit()
-                    
-                    # news_sentimentsテーブルにも保存
-                    save_news_sentiment(
-                        ticker=ticker,
-                        published_at=published_at,
-                        sentiment_score=score,
-                        label=label
-                    )
-                    
-                    return 1
-                except sqlite3.OperationalError as e:
-                    if "database is locked" in str(e) and attempt < max_retries - 1:
-                        time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
-                        continue
-                    else:
-                        print(f"  [ERROR] Failed to analyze article {article_id}: {e}")
-                        return 0
-                except Exception as e:
-                    print(f"  [ERROR] Failed to analyze article {article_id}: {e}")
-                    return 0
-                finally:
-                    if thread_cursor:
-                        thread_cursor.close()
-                    if thread_conn:
-                        thread_conn.close()
-            
-            return 0
-
-        # 並列処理（最大3スレッド - DBロック回避しつつ効率化）
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = [executor.submit(analyze_article, article)
-                      for article in articles]
-            
-            for future in as_completed(futures):
-                with lock:
-                    analyzed_count += future.result()
-        
-        print(f"      ✓ {analyzed_count} articles analyzed")
-    
-    def _calculate_scores(self, target_date):
-        """スコア計算（時間減衰を考慮）"""
-        import sqlite3
-        from datetime import datetime
-        
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-
-        # 対象日の記事を取得
-        cursor.execute("""
-            SELECT
-                c.id, c.ticker, c.name,
-                a.id, a.published_at, a.sentiment_score
-            FROM articles a
-            JOIN companies c ON a.company_id = c.id
-            WHERE DATE(a.published_at) = ?
-            ORDER BY c.id
-        """, (target_date,))
-
-        all_articles = cursor.fetchall()
-
-        # Filter articles by JST 6:00-22:00
-        articles = []
+        # Save articles to JSON
+        articles_to_save = []
         for article in all_articles:
-            company_id, ticker, name, article_id, published_at, sentiment_score = article
+            articles_to_save.append({
+                "ticker": article["ticker"],
+                "title": article["title"],
+                "content": article["content"],
+                "source": article["source"],
+                "source_url": article["source_url"],
+                "published_at": article["published_at"],
+                "sentiment_score": None,  # Will be filled later
+                "sentiment_confidence": None
+            })
+
+        write_articles(articles_to_save)
+
+        # Show statistics
+        ticker_counts = {ticker: len(articles) for ticker, articles in articles_by_ticker.items()}
+        print(f"      ✓ {self.articles_count} articles fetched (JST 6:00-22:00 only)")
+        print(f"      Top tickers:")
+        for ticker, count in sorted(ticker_counts.items(), key=lambda x: x[1], reverse=True)[:5]:
+            print(f"        {ticker}: {count} articles")
+        print()
+
+        # 3. Analyze Sentiment
+        print("[3/5] Analyzing Sentiment...")
+        articles_with_sentiment = []
+        for article in articles_to_save:
             try:
-                # Parse published_at
-                if published_at.endswith('Z'):
-                    pub_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                else:
-                    pub_time = datetime.fromisoformat(published_at)
+                text = f"{article['title']} {article['content']}"
+                score, confidence = self.sentiment_analyzer.analyze(text)
 
-                # Convert to JST
-                pub_time_jst = pub_time.astimezone(JST)
-                hour = pub_time_jst.hour
+                article["sentiment_score"] = score
+                article["sentiment_confidence"] = confidence
+                articles_with_sentiment.append(article)
+                self.analyzed_count += 1
 
-                # Include only articles published during JST 6:00-22:00
-                if 6 <= hour < 22:
-                    articles.append(article)
-            except (ValueError, AttributeError):
-                # Include if we can't parse
-                articles.append(article)
-        
-        if not articles:
-            print("      ! No articles for this date")
-            conn.close()
-            return
-        
-        # 企業ごとにスコア計算
-        company_scores = {}
-        current_time = datetime.now()
-        
-        for company_id, ticker, name, article_id, published_at, sentiment_score in articles:
-            if company_id not in company_scores:
-                company_scores[company_id] = {
-                    "ticker": ticker,
-                    "name": name,
-                    "scores": [],
-                    "count": 0
-                }
-            
+                if self.analyzed_count % 10 == 0:
+                    print(f"      Analyzed {self.analyzed_count}/{self.articles_count} articles...")
+            except Exception as e:
+                print(f"      Error analyzing article: {e}")
+                # Still include article without sentiment
+                articles_with_sentiment.append(article)
+
+        # Update articles with sentiment scores
+        write_articles(articles_with_sentiment)
+        print(f"      ✓ {self.analyzed_count} articles analyzed")
+        print()
+
+        # 4. Calculate Scores
+        print("[4/5] Calculating Scores...")
+        target_date = datetime.now().date()
+
+        # Group by ticker and calculate scores
+        ticker_scores = {}
+        for article in articles_with_sentiment:
+            ticker = article["ticker"]
+            sentiment_score = article.get("sentiment_score")
+
             if sentiment_score is not None:
-                # 公開時刻を解析
-                try:
-                    pub_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                except:
-                    pub_time = datetime.now()
-                
-                # 時間差を計算
-                time_diff = current_time - pub_time
-                hours_ago = time_diff.total_seconds() / 3600
-                
-                # 時間減衰スコア計算
-                # 最新: 1.0, 1時間後: 0.9, 2時間後: 0.8 ... 10時間以上: 0.0
-                time_decay = max(0.0, 1.0 - (hours_ago * 0.1))
-                
-                # 最終スコア = センチメント × 時間減衰
-                final_score = sentiment_score * time_decay
-                
-                company_scores[company_id]["scores"].append(final_score)
-                company_scores[company_id]["count"] += 1
-        
-        # ランキング生成
-        ranking = []
-        for company_id, data in company_scores.items():
-            if data["count"] > 0:
+                # Apply time decay
+                decayed_score = self.time_decay_calc.calculate_decay_score(
+                    sentiment_score,
+                    article["published_at"]
+                )
+
+                if ticker not in ticker_scores:
+                    ticker_scores[ticker] = {
+                        "ticker": ticker,
+                        "scores": [],
+                        "article_count": 0,
+                        "avg_sentiment": 0
+                    }
+
+                ticker_scores[ticker]["scores"].append(decayed_score)
+                ticker_scores[ticker]["article_count"] += 1
+
+        # Calculate final scores
+        scores_list = []
+        for ticker, data in ticker_scores.items():
+            if data["scores"]:
                 avg_score = sum(data["scores"]) / len(data["scores"])
-                ranking.append({
-                    "company_id": company_id,
+
+                # Calculate average sentiment (without decay for display)
+                articles_for_ticker = [a for a in articles_with_sentiment if a["ticker"] == ticker]
+                sentiments = [a["sentiment_score"] for a in articles_for_ticker if a.get("sentiment_score") is not None]
+                avg_sentiment = sum(sentiments) / len(sentiments) if sentiments else 0
+
+                scores_list.append({
+                    "ticker": ticker,
+                    "date": str(target_date),
                     "score": avg_score,
-                    "article_count": data["count"],
-                    "avg_sentiment": sum(s / time_decay for s in data["scores"]) / len(data["scores"]) 
-                                    if data["scores"] else 0
+                    "article_count": data["article_count"],
+                    "avg_sentiment": avg_sentiment
                 })
-        
-        # ランクを付与
-        ranking.sort(key=lambda x: x["score"], reverse=True)
-        
-        for rank, item in enumerate(ranking, 1):
+
+        # Sort by score and assign ranks
+        scores_list.sort(key=lambda x: x["score"], reverse=True)
+        for rank, item in enumerate(scores_list, 1):
             item["rank"] = rank
-            
-            # DBに保存
-            success = save_score(
-                company_id=item["company_id"],
-                date=target_date,
-                score=item["score"],
-                article_count=item["article_count"],
-                avg_sentiment=item["avg_sentiment"],
-                rank=rank
-            )
-            
-            if success:
-                ticker = company_scores[item['company_id']]['ticker']
-                print(f"      • Rank {rank}: {ticker} = {item['score']:.3f}")
-        
-        conn.close()
+
+        # Save scores
+        write_scores(scores_list)
+
+        print(f"      ✓ Scores calculated for {len(scores_list)} companies")
+        print(f"      Top 5:")
+        for item in scores_list[:5]:
+            print(f"        Rank {item['rank']}: {item['ticker']} = {item['score']:.3f} ({item['article_count']} articles)")
+        print()
+
+        # 5. Update Status
+        print("[5/5] Updating Status...")
+        status = {
+            "last_updated": datetime.now().isoformat(),
+            "last_updated_jst": datetime.now(JST).isoformat(),
+            "articles_count": self.articles_count,
+            "companies_count": self.companies_count,
+            "analyzed_count": self.analyzed_count,
+            "scores_count": len(scores_list)
+        }
+        write_status(status)
+        print(f"      ✓ Status updated")
+        print()
+
+        print("=" * 60)
+        print("  ✓ Batch Processing Complete!")
+        print(f"  Articles: {self.articles_count}")
+        print(f"  Analyzed: {self.analyzed_count}")
+        print(f"  Companies: {len(scores_list)}")
+        print("=" * 60)
+        print()
+
 
 if __name__ == "__main__":
     processor = NewsSpYBatchProcessor()

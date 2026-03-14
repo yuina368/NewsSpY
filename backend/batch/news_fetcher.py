@@ -69,6 +69,20 @@ class NewsAPIFetcher:
                 for ticker in self.keyword_map[word]:
                     ticker_scores[ticker] += 1
 
+        # Debug logging - show first few articles regardless of content
+        if not hasattr(self, '_classify_log_count'):
+            self._classify_log_count = 0
+        if self._classify_log_count < 5 and title:
+            print(f"    DEBUG CLASSIFY #{self._classify_log_count + 1}: {title[:60]}...")
+            print(f"      Ticker scores: {dict(ticker_scores)}")
+            print(f"      Sample words: {words[:15]}")
+            self._classify_log_count += 1
+
+        # Debug for specific companies
+        if title and ("apple" in title.lower() or "tesla" in title.lower() or "microsoft" in title.lower() or "adobe" in title.lower() or "meta" in title.lower()):
+            print(f"    DEBUG CLASSIFY (matched): {title[:60]}...")
+            print(f"      Ticker scores: {dict(ticker_scores)}")
+
         # Return ticker with highest score
         if ticker_scores:
             return max(ticker_scores.items(), key=lambda x: x[1])[0]
@@ -77,14 +91,17 @@ class NewsAPIFetcher:
 
     def _is_jst_trading_hours(self, published_at: str) -> bool:
         """
-        Check if article was published during JST trading hours (6:00-22:00)
-        This covers pre-market news before US market opens
+        Check if article was published during US trading hours
+        This includes:
+        1. JST 6:00-22:00 (pre-market and after-hours for current day)
+        2. JST 23:30-6:00 (next day) for US market hours (9:30-16:00 ET)
+        3. Articles from yesterday or today only
 
         Args:
             published_at: ISO format datetime string
 
         Returns:
-            True if article was published between 6:00-22:00 JST
+            True if article was published during relevant trading hours
         """
         try:
             # Parse the published date
@@ -96,9 +113,31 @@ class NewsAPIFetcher:
             # Convert to JST
             pub_dt_jst = pub_dt.astimezone(JST)
 
-            # Check if between 6:00 and 22:00 JST
+            # Get current JST time
+            now_jst = datetime.now(JST)
+
+            # Check if article is from today, yesterday, or day before yesterday
+            days_diff = (now_jst.date() - pub_dt_jst.date()).days
+
+            # Only include articles from last 2 days (to cover weekends)
+            if days_diff > 2:
+                return False
+
             hour = pub_dt_jst.hour
-            return 6 <= hour < 22
+
+            # Include if:
+            # 1. JST 6:00-22:00 (pre-market through after-hours)
+            # 2. JST 23:30-24:00 or 0:00-6:00 (US market hours 9:30-16:00 ET)
+            in_range = (6 <= hour < 22) or (hour >= 23) or (hour < 6)
+
+            # Debug logging for first few articles
+            if not hasattr(self, '_log_count'):
+                self._log_count = 0
+            if self._log_count < 5:
+                print(f"    DEBUG: Article time: {published_at} -> JST: {pub_dt_jst.strftime('%m-%d %H:%M')} (days_diff={days_diff}, hour={hour}, in_range={in_range})")
+                self._log_count += 1
+
+            return in_range
 
         except (ValueError, AttributeError):
             # If we can't parse the date, include it
@@ -196,6 +235,12 @@ class NewsAPIFetcher:
         if filtered_count > 0:
             print(f"  Filtered {filtered_count} articles outside JST 6:00-22:00")
 
+        # Debug: Print first few articles
+        print(f"  DEBUG: Processing {len(articles)} articles")
+        for i, article in enumerate(articles[:3]):
+            print(f"  Article {i+1}: {article.get('title', 'N/A')[:80]}...")
+            print(f"    Content preview: {article.get('description', article.get('content', 'N/A'))[:80]}...")
+
         return dict(classified)
 
     def get_articles(
@@ -221,41 +266,48 @@ class NewsAPIFetcher:
 
     def fetch_all_companies(self) -> List[Dict]:
         """
-        Fetch articles for all companies using optimized batch approach
+        Fetch articles for all companies using yfinance (primary) + GNews (backup)
         Returns a flat list of all articles with ticker assigned
         """
         all_articles = []
 
-        print(f"\n[Fetching News from GNews API]")
+        print(f"\n[Fetching News from Primary Sources (yfinance)]")
         print(f"  Companies: {len(NYSE_COMPANIES)}")
 
-        # Step 1: Fetch all articles from GNews in batch
-        gnews_articles = self._fetch_all_gnews_articles(max_articles=100)
+        # Step 1: Fetch from yfinance first (primary source for recent articles)
+        yf_articles_by_ticker = {}
+        total_yf = 0
+        for company in NYSE_COMPANIES:
+            ticker = company["ticker"]
+            name = company["name"]
+            yf_articles = self._get_yfinance_articles(ticker, name)
+            if yf_articles:
+                yf_articles_by_ticker[ticker] = yf_articles
+                total_yf += len(yf_articles)
+                if total_yf <= 20:  # Show first few
+                    print(f"  {ticker}: {len(yf_articles)} articles")
 
-        # Step 2: Classify and distribute articles
-        print(f"\n[Classifying Articles]")
-        classified = self._classify_and_distribute_articles(gnews_articles)
+        print(f"  Total from yfinance: {total_yf} articles")
 
-        print(f"  Classified {len(gnews_articles)} articles for {len(classified)} companies")
-
-        # Step 3: Convert to flat list
-        for ticker, articles in classified.items():
+        # Step 2: Add yfinance articles to main list
+        for ticker, articles in yf_articles_by_ticker.items():
             all_articles.extend(articles)
 
-        # Step 4: Fill gaps with yfinance for companies without articles
-        companies_without_news = set(c["ticker"] for c in NYSE_COMPANIES) - set(classified.keys())
+        # Step 3: If no articles from yfinance, try GNews as backup
+        if total_yf == 0:
+            print(f"\n[No articles from yfinance, trying GNews API]")
+            gnews_articles = self._fetch_all_gnews_articles(max_articles=100)
 
-        if companies_without_news:
-            print(f"\n[Filling gaps with yfinance for {len(companies_without_news)} companies]")
-            for ticker in companies_without_news:
-                company = next(c for c in NYSE_COMPANIES if c["ticker"] == ticker)
-                yf_articles = self._get_yfinance_articles(ticker, company["name"])
-                if yf_articles:
-                    all_articles.extend(yf_articles)
-                    print(f"  {ticker}: {len(yf_articles)} articles from yfinance")
-                else:
-                    from app.config import logger
-                    logger.warning(f"No articles found for {ticker} from any source")
+            print(f"\n[Classifying Articles from GNews]")
+            classified = self._classify_and_distribute_articles(gnews_articles)
+
+            print(f"  Classified {len(gnews_articles)} articles for {len(classified)} companies")
+
+            # Convert to flat list
+            for ticker, articles in classified.items():
+                all_articles.extend(articles)
+        else:
+            print(f"\n[Using {total_yf} articles from yfinance (JST 6:00-22:00 filtered)]")
 
         print(f"\n[Total: {len(all_articles)} articles fetched]")
         return all_articles
@@ -268,6 +320,22 @@ class NewsAPIFetcher:
             news = ticker_obj.news
             if not news:
                 return []
+
+            # Debug logging for first few tickers
+            if not hasattr(self, '_yf_log_count'):
+                self._yf_log_count = 0
+            if self._yf_log_count < 3:
+                print(f"    DEBUG yfinance {ticker}: {len(news)} raw articles")
+                if news and len(news) > 0:
+                    first_item = news[0]
+                    provider_time = first_item.get("providerPublishTime", "")
+                    if provider_time and isinstance(provider_time, (int, float)):
+                        try:
+                            pub_date = datetime.fromtimestamp(provider_time)
+                            print(f"      First article time: {provider_time} -> {pub_date.isoformat()}")
+                        except:
+                            pass
+                self._yf_log_count += 1
 
             articles = []
             for item in news:
