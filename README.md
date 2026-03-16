@@ -38,7 +38,7 @@ Whether you're a quantitative trader, financial analyst, or developer exploring 
 
 ### Dashboard Preview
 
-![Dashboard Demo](./docs/demo.gif)
+![Dashboard Demo](./docs/screenshot.gif)
 
 *Neon-themed Investment Dashboard · Sentiment Heatmap · Time-series Charts*
 
@@ -318,7 +318,7 @@ Made with ❤️ by [yuina368](https://github.com/yuina368)
 
 ### 仪表板预览
 
-![Dashboard Demo](./docs/demo.gif)
+![Dashboard Demo](./docs/screenshot.gif)
 
 *霓虹主题投资仪表板 · 情绪热力图 · 时序图表*
 
