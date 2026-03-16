@@ -28,10 +28,9 @@
 
 ## 🖥 Demo
 
-<!-- Replace with your actual screenshot or GIF -->
-![Dashboard Preview](./docs/screenshot.png)
+![Dashboard Demo](./docs/screenshot.gif)
 
-*Sentiment heatmap · Per-ticker time-series · Real-time ranking*
+*Neon-themed Investment Dashboard · Sentiment Heatmap · Time-series Charts*
 
 </div>
 
