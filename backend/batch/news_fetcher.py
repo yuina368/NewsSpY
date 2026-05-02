@@ -1,378 +1,251 @@
+# backend/batch/news_fetcher.py（完全置き換え）
+
 #!/usr/bin/env python3
 """
-News fetcher: Fetch news from GNews API and yfinance
-Optimized to fetch all company news in minimal API requests
+News fetcher: yfinance でニュースを取得し、
+記事1件ごとに S&P500 銘柄を判定する設計。
 """
 
-import requests
-import yfinance as yf
 import re
+import yfinance as yf
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Set
 from collections import defaultdict
-from app.config import GNEWS_API_KEY, GNEWS_BASE_URL, NYSE_COMPANIES
 
+from app.config import NYSE_COMPANIES
 
-# JST timezone (UTC+9)
 JST = timezone(timedelta(hours=9))
 
 
 class NewsAPIFetcher:
-    """Fetch news from GNews API with smart multi-company matching"""
+    """
+    記事単位で銘柄を判定するフェッチャー。
+    - yfinance から各銘柄のニュースを取得
+    - 記事ごとにキーワードスコアで銘柄を判定
+    - 1記事が複数銘柄に関連する場合は最スコアの銘柄に割り当て
+    """
 
     def __init__(self):
-        self.api_key = GNEWS_API_KEY
-        self.base_url = GNEWS_BASE_URL
+        # ticker → {keywords} の逆引きマップを構築
+        self.companies       = NYSE_COMPANIES
+        self.keyword_map     = self._build_keyword_map()
+        self.ticker_set      = {c["ticker"] for c in self.companies}
+        self._yf_log_count   = 0
+        self._jst_log_count  = 0
 
-        # Build keyword map for efficient matching
-        self.keyword_map = self._build_keyword_map()
+    # ──────────────────────────────────────────
+    # キーワードマップ構築
+    # ──────────────────────────────────────────
 
     def _build_keyword_map(self) -> Dict[str, Set[str]]:
-        """Build a mapping of keywords to tickers for efficient article classification"""
-        keyword_map = defaultdict(set)
+        """
+        { "apple": {"AAPL"}, "iphone": {"AAPL"}, ... }
+        1単語 → その単語を持つ銘柄の集合
+        """
+        keyword_map: Dict[str, Set[str]] = defaultdict(set)
 
-        for company in NYSE_COMPANIES:
-            ticker = company["ticker"]
-            name = company["name"]
+        for company in self.companies:
+            ticker   = company["ticker"]
+            name     = company["name"]
             keywords = company.get("keywords", [])
 
-            # Add ticker
+            # ティッカー自体
             keyword_map[ticker.lower()].add(ticker)
 
-            # Add company name words
-            for word in name.split():
-                if len(word) > 2:
-                    keyword_map[word.lower()].add(ticker)
+            # 会社名の各単語（3文字以上）
+            for word in re.findall(r"[A-Za-z]{3,}", name):
+                keyword_map[word.lower()].add(ticker)
 
-            # Add keywords
+            # キーワードリスト
             for kw in keywords:
-                for word in kw.split():
-                    if len(word) > 2:
-                        keyword_map[word.lower()].add(ticker)
+                for word in re.findall(r"[A-Za-z]{3,}", kw):
+                    keyword_map[word.lower()].add(ticker)
 
         return dict(keyword_map)
 
-    def _classify_article(self, title: str, content: str) -> Optional[str]:
-        """
-        Classify which company an article belongs to based on keywords
+    # ──────────────────────────────────────────
+    # 記事1件 → 銘柄判定
+    # ──────────────────────────────────────────
 
-        Returns the ticker with the most keyword matches, or None if no match
+    def classify_article(self, title: str, content: str) -> Optional[str]:
         """
-        text = f"{title} {content}".lower()
-        words = re.findall(r'\b\w+\b', text)
+        記事のタイトル+本文から最もマッチする銘柄を返す。
+        マッチなし → None
+        """
+        text  = f"{title} {content}".lower()
+        words = re.findall(r"[a-z]{2,}", text)
 
-        # Count matches for each ticker
-        ticker_scores = defaultdict(int)
+        ticker_scores: Dict[str, int] = defaultdict(int)
 
         for word in words:
             if word in self.keyword_map:
                 for ticker in self.keyword_map[word]:
                     ticker_scores[ticker] += 1
 
-        # Debug logging - show first few articles regardless of content
-        if not hasattr(self, '_classify_log_count'):
-            self._classify_log_count = 0
-        if self._classify_log_count < 5 and title:
-            print(f"    DEBUG CLASSIFY #{self._classify_log_count + 1}: {title[:60]}...")
-            print(f"      Ticker scores: {dict(ticker_scores)}")
-            print(f"      Sample words: {words[:15]}")
-            self._classify_log_count += 1
+        if not ticker_scores:
+            return None
 
-        # Debug for specific companies
-        if title and ("apple" in title.lower() or "tesla" in title.lower() or "microsoft" in title.lower() or "adobe" in title.lower() or "meta" in title.lower()):
-            print(f"    DEBUG CLASSIFY (matched): {title[:60]}...")
-            print(f"      Ticker scores: {dict(ticker_scores)}")
+        # スコア最大の銘柄を返す（同点の場合は先にヒットした方）
+        best_ticker = max(ticker_scores, key=lambda t: ticker_scores[t])
 
-        # Return ticker with highest score
-        if ticker_scores:
-            return max(ticker_scores.items(), key=lambda x: x[1])[0]
+        # スコアが1点のみ（偶然のヒット）は除外
+        if ticker_scores[best_ticker] < 2:
+            return None
 
-        return None
+        return best_ticker
+
+    # ──────────────────────────────────────────
+    # JST 時間フィルタ
+    # ──────────────────────────────────────────
 
     def _is_jst_trading_hours(self, published_at: str) -> bool:
-        """
-        Check if article was published during US trading hours
-        This includes:
-        1. JST 6:00-22:00 (pre-market and after-hours for current day)
-        2. JST 23:30-6:00 (next day) for US market hours (9:30-16:00 ET)
-        3. Articles from yesterday or today only
-
-        Args:
-            published_at: ISO format datetime string
-
-        Returns:
-            True if article was published during relevant trading hours
-        """
+        """JST 06:00〜22:00 かつ直近2日以内の記事のみ通過"""
         try:
-            # Parse the published date
-            if published_at.endswith('Z'):
-                pub_dt = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-            else:
-                pub_dt = datetime.fromisoformat(published_at)
+            pub_dt = datetime.fromisoformat(
+                published_at.replace("Z", "+00:00")
+            ).astimezone(JST)
 
-            # Convert to JST
-            pub_dt_jst = pub_dt.astimezone(JST)
+            now_jst   = datetime.now(JST)
+            days_diff = (now_jst.date() - pub_dt.date()).days
 
-            # Get current JST time
-            now_jst = datetime.now(JST)
-
-            # Check if article is from today, yesterday, or day before yesterday
-            days_diff = (now_jst.date() - pub_dt_jst.date()).days
-
-            # Only include articles from last 2 days (to cover weekends)
             if days_diff > 2:
                 return False
 
-            hour = pub_dt_jst.hour
-
-            # Include if:
-            # 1. JST 6:00-22:00 (pre-market through after-hours)
-            # 2. JST 23:30-24:00 or 0:00-6:00 (US market hours 9:30-16:00 ET)
-            in_range = (6 <= hour < 22) or (hour >= 23) or (hour < 6)
-
-            # Debug logging for first few articles
-            if not hasattr(self, '_log_count'):
-                self._log_count = 0
-            if self._log_count < 5:
-                print(f"    DEBUG: Article time: {published_at} -> JST: {pub_dt_jst.strftime('%m-%d %H:%M')} (days_diff={days_diff}, hour={hour}, in_range={in_range})")
-                self._log_count += 1
-
-            return in_range
+            return 6 <= pub_dt.hour < 22
 
         except (ValueError, AttributeError):
-            # If we can't parse the date, include it
             return True
 
-    def _fetch_all_gnews_articles(self, max_articles: int = 100) -> List[Dict]:
+    # ──────────────────────────────────────────
+    # yfinance からニュース取得
+    # ──────────────────────────────────────────
+
+    # backend/batch/news_fetcher.py の _fetch_yfinance メソッドのみ置き換え
+
+    def _fetch_yfinance(self, ticker: str) -> List[Dict]:
         """
-        Fetch all news articles in a single GNews API request
-        by searching for all tickers with OR query
+        yfinance 1.3.0 以降の新しいAPI構造に対応。
+        news[i] = {'id': ..., 'content': { 'title', 'pubDate', 'summary', ... }}
         """
-        if not self.api_key:
+        try:
+            raw_news = yf.Ticker(ticker).news or []
+        except Exception:
             return []
 
-        endpoint = f"{self.base_url}/search"
-
-        # Build OR query with all tickers
-        tickers = [c["ticker"] for c in NYSE_COMPANIES]
-        # Use chunks to avoid query length limits
-        ticker_groups = []
-        chunk_size = 10
-
-        for i in range(0, len(tickers), chunk_size):
-            chunk = tickers[i:i + chunk_size]
-            ticker_groups.append(" OR ".join(chunk))
-
-        all_articles = []
-
-        for i, query in enumerate(ticker_groups):
-            params = {
-                "q": query,
-                "max": max_articles // len(ticker_groups) + 10,
-                "lang": "en",
-                "token": self.api_key
-            }
-
+        articles = []
+        for item in raw_news:
             try:
-                print(f"  [GNews] Fetching batch {i+1}/{len(ticker_groups)}...", end="")
-                import time
-                time.sleep(0.5)
+                # 新構造: content の中に実データがある
+                content = item.get("content", {})
+                if not content:
+                    continue
 
-                response = requests.get(endpoint, params=params, timeout=15)
-                response.raise_for_status()
-                data = response.json()
+                title = content.get("title", "")
+                if not title or title == "[Removed]":
+                    continue
 
-                batch_articles = data.get("articles", [])
-                all_articles.extend(batch_articles)
-                print(f" {len(batch_articles)} articles")
-
-            except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429:
-                    print(f" Rate limit exceeded!")
+                # 公開日時: pubDate (ISO形式 "2026-05-01T20:44:36Z")
+                pub_date_str = content.get("pubDate", "")
+                if pub_date_str:
+                    pub_iso = pub_date_str
                 else:
-                    print(f" Error: {e}")
-            except Exception as e:
-                print(f" Error: {str(e)[:50]}")
+                    pub_iso = datetime.now().isoformat()
 
-        return all_articles
+                if not self._is_jst_trading_hours(pub_iso):
+                    continue
 
-    def _classify_and_distribute_articles(self, articles: List[Dict]) -> Dict[str, List[Dict]]:
-        """
-        Classify articles by company and distribute them
-        Only includes articles published during JST 6:00-22:00
+                # 本文: summary または description
+                body = (
+                    content.get("summary", "")
+                    or content.get("description", "")
+                    or title
+                )
+                # HTMLタグを除去
+                body = re.sub(r"<[^>]+>", "", body)
 
-        Returns: Dict mapping ticker to list of articles
-        """
-        classified = defaultdict(list)
-        filtered_count = 0
+                # ソース名
+                provider = content.get("provider", {})
+                source_name = provider.get("displayName", "Yahoo Finance")
 
-        for article in articles:
-            title = article.get("title", "")
-            content = article.get("description", "") or article.get("content", "")
-            published_at = article.get("publishedAt", "")
+                # URL
+                canonical = content.get("canonicalUrl", {})
+                url = canonical.get("url", "")
 
-            if not title or title == "[Removed]":
-                continue
-
-            # Filter by JST trading hours (6:00-22:00)
-            if not self._is_jst_trading_hours(published_at):
-                filtered_count += 1
-                continue
-
-            # Classify the article
-            ticker = self._classify_article(title, content)
-
-            if ticker:
-                classified[ticker].append({
-                    "ticker": ticker,
-                    "title": title,
-                    "content": content or title,
-                    "source": article.get("source", {}).get("name", "GNews"),
-                    "source_url": article.get("url", ""),
-                    "published_at": published_at
+                articles.append({
+                    "title":        title,
+                    "content":      body,
+                    "source":       source_name,
+                    "source_url":   url,
+                    "published_at": pub_iso,
                 })
 
-        if filtered_count > 0:
-            print(f"  Filtered {filtered_count} articles outside JST 6:00-22:00")
+            except Exception:
+                continue
 
-        # Debug: Print first few articles
-        print(f"  DEBUG: Processing {len(articles)} articles")
-        for i, article in enumerate(articles[:3]):
-            print(f"  Article {i+1}: {article.get('title', 'N/A')[:80]}...")
-            print(f"    Content preview: {article.get('description', article.get('content', 'N/A'))[:80]}...")
+        return articles
 
-        return dict(classified)
-
-    def get_articles(
-        self,
-        ticker: str,
-        company_name: str,
-        days: int = 30,
-        page_size: int = 100
-    ) -> List[Dict]:
-        """
-        Fetch articles for a specific company
-        Note: This method is kept for backward compatibility but uses cached results
-        """
-
-        # For single company request, use the batch fetcher approach
-        articles = self._get_yfinance_articles(ticker, company_name)
-
-        if not articles:
-            from app.config import logger
-            logger.warning(f"No articles found for {ticker}")
-
-        return articles[:page_size]
+    # ──────────────────────────────────────────
+    # メインエントリーポイント
+    # ──────────────────────────────────────────
 
     def fetch_all_companies(self) -> List[Dict]:
         """
-        Fetch articles for all companies using yfinance (primary) + GNews (backup)
-        Returns a flat list of all articles with ticker assigned
+        全銘柄のニュースを取得し、
+        記事1件ごとに銘柄を判定して返す。
+
+        フロー:
+          1. 各銘柄の yfinance ニュースを取得（URLでdedup）
+          2. 記事ごとに classify_article() で銘柄を判定
+          3. 判定結果が yfinance 取得元と異なっても判定結果を優先
         """
-        all_articles = []
+        print(f"  対象銘柄数: {len(self.companies)}")
 
-        print(f"\n[Fetching News from Primary Sources (yfinance)]")
-        print(f"  Companies: {len(NYSE_COMPANIES)}")
+        # URL をキーにして重複を排除しながら収集
+        seen_urls:    Set[str]  = set()
+        raw_articles: List[Dict] = []
 
-        # Step 1: Fetch from yfinance first (primary source for recent articles)
-        yf_articles_by_ticker = {}
-        total_yf = 0
-        for company in NYSE_COMPANIES:
+        for i, company in enumerate(self.companies):
             ticker = company["ticker"]
-            name = company["name"]
-            yf_articles = self._get_yfinance_articles(ticker, name)
-            if yf_articles:
-                yf_articles_by_ticker[ticker] = yf_articles
-                total_yf += len(yf_articles)
-                if total_yf <= 20:  # Show first few
-                    print(f"  {ticker}: {len(yf_articles)} articles")
+            fetched = self._fetch_yfinance(ticker)
 
-        print(f"  Total from yfinance: {total_yf} articles")
-
-        # Step 2: Add yfinance articles to main list
-        for ticker, articles in yf_articles_by_ticker.items():
-            all_articles.extend(articles)
-
-        # Step 3: If no articles from yfinance, try GNews as backup
-        if total_yf == 0:
-            print(f"\n[No articles from yfinance, trying GNews API]")
-            gnews_articles = self._fetch_all_gnews_articles(max_articles=100)
-
-            print(f"\n[Classifying Articles from GNews]")
-            classified = self._classify_and_distribute_articles(gnews_articles)
-
-            print(f"  Classified {len(gnews_articles)} articles for {len(classified)} companies")
-
-            # Convert to flat list
-            for ticker, articles in classified.items():
-                all_articles.extend(articles)
-        else:
-            print(f"\n[Using {total_yf} articles from yfinance (JST 6:00-22:00 filtered)]")
-
-        print(f"\n[Total: {len(all_articles)} articles fetched]")
-        return all_articles
-
-    def _get_yfinance_articles(self, ticker: str, company_name: str) -> List[Dict]:
-        """Fetch articles from yfinance (filtered to JST 6:00-22:00)"""
-        try:
-            ticker_obj = yf.Ticker(ticker)
-
-            news = ticker_obj.news
-            if not news:
-                return []
-
-            # Debug logging for first few tickers
-            if not hasattr(self, '_yf_log_count'):
-                self._yf_log_count = 0
-            if self._yf_log_count < 3:
-                print(f"    DEBUG yfinance {ticker}: {len(news)} raw articles")
-                if news and len(news) > 0:
-                    first_item = news[0]
-                    provider_time = first_item.get("providerPublishTime", "")
-                    if provider_time and isinstance(provider_time, (int, float)):
-                        try:
-                            pub_date = datetime.fromtimestamp(provider_time)
-                            print(f"      First article time: {provider_time} -> {pub_date.isoformat()}")
-                        except:
-                            pass
-                self._yf_log_count += 1
-
-            articles = []
-            for item in news:
-                try:
-                    provider = item.get("providerPublishTime", "")
-                    source_name = item.get("publisher", "") or "Yahoo Finance"
-
-                    if provider and isinstance(provider, (int, float)):
-                        try:
-                            pub_date = datetime.fromtimestamp(provider)
-                        except (ValueError, TypeError, OSError):
-                            pub_date = datetime.now()
-                    else:
-                        pub_date = datetime.now()
-
-                    title = item.get("title", "")
-                    if not title or title == "[Removed]":
-                        continue
-
-                    pub_iso = pub_date.isoformat()
-
-                    # Filter by JST trading hours
-                    if not self._is_jst_trading_hours(pub_iso):
-                        continue
-
-                    articles.append({
-                        "ticker": ticker,
-                        "title": title,
-                        "content": item.get("summary", "") or title,
-                        "source": source_name,
-                        "source_url": item.get("link", ""),
-                        "published_at": pub_iso
-                    })
-                except Exception:
+            for article in fetched:
+                url = article.get("source_url", "")
+                if url and url in seen_urls:
                     continue
+                if url:
+                    seen_urls.add(url)
+                # 取得元ティッカーを一時保存（分類のヒント）
+                article["_source_ticker"] = ticker
+                raw_articles.append(article)
 
-            return articles
+            if (i + 1) % 50 == 0:
+                print(f"    {i + 1}/{len(self.companies)} 銘柄取得完了 "
+                      f"（記事数: {len(raw_articles)}）")
 
-        except Exception as e:
-            return []
+        print(f"  重複除去後の記事数: {len(raw_articles)}")
+
+        # 記事ごとに銘柄を判定
+        classified: List[Dict] = []
+        unmatched  = 0
+
+        for article in raw_articles:
+            title   = article["title"]
+            content = article["content"]
+
+            ticker = self.classify_article(title, content)
+
+            if ticker is None:
+                # キーワードマッチなし → 取得元ティッカーをフォールバックとして使用
+                ticker = article["_source_ticker"]
+
+            classified.append({
+                "ticker":       ticker,
+                "title":        title,
+                "content":      content,
+                "source":       article["source"],
+                "source_url":   article["source_url"],
+                "published_at": article["published_at"],
+            })
+
+        print(f"  銘柄判定完了: {len(classified)} 記事")
+        return classified
